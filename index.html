@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0d10">
+<title>Futebol Agora | Jogos, placares e estatísticas</title>
+<style>
+:root{color-scheme:dark;--bg:#090b0e;--surface:#11151b;--text:#f1f4f8;--muted:#9aa5b5;--line:#272e38;--green:#38c878;--green2:#123524;--red:#ff626c;--shadow:0 8px 28px #00000030}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}button,input,select{font:inherit}button{cursor:pointer}.top{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}.topin{max-width:1250px;margin:auto;padding:14px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:850;letter-spacing:-.5px}.ball{width:36px;height:36px;display:grid;place-items:center;background:var(--green2);border-radius:12px;font-size:20px}.brand span:last-child{color:var(--green)}.toplinks{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}.btn,.tab{border:1px solid var(--line);background:#171c23;border-radius:10px;padding:9px 13px;color:var(--text);font-weight:650}.btn.primary{background:var(--green);border-color:var(--green);color:#fff}.btn:disabled{opacity:.5;cursor:not-allowed}.wrap{max-width:1250px;margin:24px auto;padding:0 20px}.hero{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:22px}.eyebrow{color:var(--green);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px}.hero h1{font-size:clamp(26px,4vw,38px);line-height:1.15;letter-spacing:-1.2px;margin:6px 0 8px}.hero p{color:var(--muted);margin:0;max-width:700px}.statuspill{display:inline-flex;align-items:center;gap:8px;background:#11151b;border:1px solid var(--line);padding:9px 12px;border-radius:999px;font-size:13px;color:var(--muted);white-space:nowrap}.dot{width:8px;height:8px;border-radius:50%;background:#9aa4b5}.dot.ok{background:var(--green)}.dot.live{background:var(--red);box-shadow:0 0 0 4px #d948481a}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;align-items:start}.panel,.contentbox,.match,.leaguehead,.empty,.notice{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}.panel{padding:18px;position:sticky;top:88px}.panel h2{font-size:15px;margin:0 0 14px}.field{display:grid;gap:6px;margin-bottom:14px}.field label{font-size:12px;font-weight:750;color:var(--muted)}input,select{width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px 11px;color:var(--text);outline:none}input:focus,select:focus{border-color:#5aa77d;box-shadow:0 0 0 3px #16794b14}.hint{font-size:12px;color:var(--muted);margin:8px 0 0}.divider{height:1px;background:var(--line);margin:18px 0}.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}.tab{padding:8px 12px;color:var(--muted)}.tab.active{background:var(--green2);border-color:#b7e3c9;color:var(--green)}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}.toolbar .search{flex:1;min-width:180px}.toolbar .date{width:auto}.toolbar .select{width:auto;max-width:190px}.sectiontitle{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:18px 0 10px}.sectiontitle h2{font-size:17px;margin:0}.muted{color:var(--muted)}.count{font-size:12px;color:var(--muted);font-weight:700}.league{margin-bottom:14px;overflow:hidden;border-radius:15px;border:1px solid var(--line);background:#fff;box-shadow:var(--shadow)}.leaguehead{box-shadow:none;border:0;border-radius:0;background:#171c23;padding:12px 15px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}.leaguehead img{width:24px;height:24px;object-fit:contain}.league-name{font-weight:800}.league-sub{font-size:12px;color:var(--muted)}.match{border:0;box-shadow:none;border-radius:0;border-bottom:1px solid #eef1f5;padding:13px 15px;display:grid;grid-template-columns:72px minmax(0,1fr) 100px;gap:12px;align-items:center}.match:last-child{border-bottom:0}.kick{font-size:12px;color:var(--muted);text-align:center}.live-label{color:var(--red);font-weight:850}.teams{display:grid;gap:7px;min-width:0}.team{display:flex;align-items:center;gap:8px;min-width:0;font-weight:650}.team img{width:21px;height:21px;object-fit:contain;flex:none}.team-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.score{margin-left:auto;font-weight:850;font-variant-numeric:tabular-nums}.match-actions{display:flex;justify-content:flex-end;gap:6px;align-items:center}.iconbtn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 8px;color:var(--muted)}.iconbtn.fav{color:#b77b00;background:#33290e;border-color:#6b541c}.empty{padding:35px 20px;text-align:center;color:var(--muted);box-shadow:none}.empty strong{display:block;color:var(--text);font-size:17px;margin-bottom:6px}.notice{padding:13px 15px;margin-bottom:15px;font-size:13px;box-shadow:none}.notice.warn{border-color:#5b4922;background:#2a2110;color:#f1d38a}.notice.good{border-color:#b7e3c9;background:#10291d;color:#8be4ad}.notice.error{border-color:#66343a;background:#2a1518;color:#ff9da3}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.stat{border:1px solid var(--line);border-radius:12px;padding:12px}.stat .label{font-size:12px;color:var(--muted)}.stat .value{font-size:20px;font-weight:850;margin-top:3px}.tablewrap{overflow:auto}.data-table{border-collapse:collapse;width:100%;font-size:13px}.data-table th,.data-table td{text-align:left;padding:10px;border-bottom:1px solid var(--line);white-space:nowrap}.data-table th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}.playerline{padding:9px 0;border-bottom:1px solid var(--line);display:flex;gap:10px;justify-content:space-between}.playerline:last-child{border:0}.playerline small{display:block;color:var(--muted)}.modalback{position:fixed;inset:0;background:#1118278a;z-index:30;display:none;align-items:center;justify-content:center;padding:18px}.modalback.open{display:flex}.modal{background:#11151b;border-radius:18px;width:min(850px,100%);max-height:88vh;overflow:auto;padding:20px;box-shadow:0 25px 90px #0003}.modalhead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}.modalhead h2{font-size:20px;margin:0}.close{font-size:22px;line-height:1}.loading{display:inline-flex;align-items:center;gap:8px}.spinner{width:15px;height:15px;border:2px solid #dce5df;border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}footer{max-width:1250px;padding:20px;margin:10px auto 30px;color:var(--muted);font-size:12px}.mobilekey{display:none}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.panel{position:static}.hero{display:block}.statuspill{margin-top:14px}.topin{padding:12px 15px}.wrap{padding:0 13px;margin-top:18px}.match{grid-template-columns:55px minmax(0,1fr) 82px;padding:12px 10px;gap:8px}.match-actions .details{display:none}.grid2{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.toplinks{margin-left:0;width:100%}.toplinks .btn{flex:1}.match{grid-template-columns:48px minmax(0,1fr) 55px}.match-actions{flex-direction:column}.iconbtn{padding:5px 7px}.grid2{grid-template-columns:1fr 1fr}.hero h1{font-size:29px}.toolbar .date{width:100%}.toolbar .select{flex:1;max-width:none}}
+
+/* Dark theme refinements */
+body{background:var(--bg);color:var(--text)}
+.top{background:#0d1014}
+.btn,.tab,.iconbtn,input,select{background:#171c23;color:var(--text);border-color:var(--line)}
+.btn.primary{background:var(--green);color:#07150d;border-color:var(--green)}
+.panel,.contentbox,.match,.league,.leaguehead,.empty,.notice,.stat,.modal,.statuspill{background:var(--surface);color:var(--text);border-color:var(--line)}
+.leaguehead{background:#171c23}
+.match{background:#11151b;border-bottom-color:#252c35}
+.tab{color:var(--muted)}
+.tab.active{background:#123524;border-color:#285b3c;color:#70e39f}
+input::placeholder{color:#7e8999}
+.data-table th,.data-table td{border-bottom-color:var(--line)}
+.data-table th{color:var(--muted)}
+.notice.warn{border-color:#5b4922;background:#2a2110;color:#f1d38a}
+.notice.good{border-color:#285b3c;background:#10291d;color:#8be4ad}
+.notice.error{border-color:#66343a;background:#2a1518;color:#ff9da3}
+.iconbtn.fav{color:#ffd66b;background:#33290e;border-color:#6b541c}
+.modalback{background:#000b}
+@media(max-width:600px){
+  .top{position:sticky;top:0}
+  .topin{gap:10px;padding:10px 12px}
+  .brand{font-size:18px}
+  .ball{width:32px;height:32px}
+  .toplinks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .toplinks .btn{padding:8px 5px;font-size:12px;white-space:nowrap}
+  .wrap{padding:0 10px;margin-top:15px}
+  .hero h1{font-size:27px;letter-spacing:-.7px}
+  .hero p{font-size:14px}
+  .panel{padding:14px}
+  .layout{gap:15px}
+  .toolbar{gap:7px}
+  .toolbar .search{flex-basis:100%;min-width:0}
+  .toolbar .date,.toolbar .select{flex:1;width:auto;max-width:none}
+  .filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .tab{padding:8px 4px;font-size:12px}
+  .sectiontitle{margin-top:16px}
+  .sectiontitle h2{font-size:16px}
+  .match{grid-template-columns:46px minmax(0,1fr) 36px;gap:6px;padding:11px 8px}
+  .kick{font-size:11px}
+  .team{font-size:13px;gap:5px}
+  .team img{width:18px;height:18px}
+  .match-actions{flex-direction:column;gap:4px}
+  .match-actions .iconbtn{font-size:12px;padding:4px 6px}
+  .match-actions .details{display:none}
+  .leaguehead{padding:10px}
+  .league-name{font-size:13px}
+  .league-sub{font-size:11px}
+  .grid2{grid-template-columns:1fr}
+  .modal{padding:15px;max-height:92vh}
+  .modalhead h2{font-size:17px}
+  .statuspill{white-space:normal;font-size:12px}
+}
+
+</style>
+</head>
+<body>
+<header class="top"><div class="topin">
+  <div class="brand"><span class="ball">⚽</span><span>Futebol <span>Agora</span></span></div>
+  <nav class="toplinks">
+    <button class="btn" id="navToday">Jogos de hoje</button>
+    <button class="btn" id="navLive">🔴 Ao vivo</button>
+    <button class="btn" id="navFav">★ Favoritos</button>
+  </nav>
+</div></header>
+<main class="wrap">
+  <section class="hero">
+    <div><div class="eyebrow">Central de partidas</div><h1>O futebol do mundo em um só lugar.</h1><p>Consulte jogos ao vivo, resultados, calendário, estatísticas, escalações e artilheiros. Os dados são carregados da API conectada por você.</p></div>
+    <div class="statuspill"><span class="dot" id="statusDot"></span><span id="statusText">API não conectada</span></div>
+  </section>
+  <div id="notice"></div>
+  <div class="layout">
+    <aside class="panel">
+      <h2>Conexão de dados</h2>
+      <div class="field"><label for="apiKey">Chave da API-Football</label><input id="apiKey" type="password" autocomplete="off" placeholder="Cole sua chave aqui"></div>
+      <button class="btn primary" id="connectBtn" style="width:100%">Conectar API</button>
+      <p class="hint">A chave fica apenas na memória desta página e não é salva. Ao recarregar, será necessário digitá-la novamente.</p>
+      <div class="divider"></div>
+      <h2>Filtros</h2>
+      <div class="field"><label for="datePick">Data dos jogos</label><input id="datePick" type="date"></div>
+      <div class="field"><label for="countryPick">País</label><select id="countryPick"><option value="">Todos os países</option></select></div>
+      <div class="field"><label for="leaguePick">Campeonato</label><select id="leaguePick"><option value="">Todos os campeonatos</option></select></div>
+      <div class="field"><label for="seasonPick">Temporada dos artilheiros</label><input id="seasonPick" type="number" min="2000" max="2100" value="2026"></div>
+      <button class="btn" id="topScorersBtn" style="width:100%">Ver artilheiros do campeonato</button>
+      <div class="divider"></div>
+      <h2>Notificações</h2>
+      <p class="hint" style="margin:0 0 10px">Ative notificações do navegador para receber avisos quando houver atualização nas partidas carregadas.</p>
+      <button class="btn" id="notifyBtn" style="width:100%">Ativar notificações</button>
+      <p class="hint" id="notifyStatus">Notificações desativadas.</p>
+    </aside>
+    <section>
+      <div class="toolbar">
+        <input class="search" id="searchInput" type="search" placeholder="Buscar time ou campeonato...">
+        <button class="btn date" id="refreshBtn">↻ Atualizar</button>
+        <select class="select" id="sortPick" aria-label="Ordenação"><option value="time">Ordenar por horário</option><option value="league">Ordenar por campeonato</option></select>
+      </div>
+      <div class="filters" id="statusFilters">
+        <button class="tab active" data-mode="all">Todos</button><button class="tab" data-mode="live">🔴 Ao vivo</button><button class="tab" data-mode="finished">Encerrados</button><button class="tab" data-mode="upcoming">Próximos</button><button class="tab" data-mode="favorites">★ Favoritos</button>
+      </div>
+      <div class="sectiontitle"><h2 id="listHeading">Partidas do dia</h2><span class="count" id="matchCount">0 partidas</span></div>
+      <div id="matches"><div class="empty"><strong>Conecte sua API para começar</strong>Adicione uma chave válida da API-Football no painel ao lado. Nenhum placar fictício será exibido.</div></div>
+      <div class="sectiontitle"><h2>Artilheiros</h2><span class="count">Por campeonato e temporada</span></div>
+      <div class="contentbox" style="padding:15px" id="scorers"><div class="muted">Escolha um campeonato e clique em “Ver artilheiros do campeonato”.</div></div>
+    </section>
+  </div>
+</main>
+<footer>Futebol Agora é um projeto independente e não é afiliado à API-Football. Dados, cobertura, horários e estatísticas dependem da disponibilidade do provedor. Este site não transmite partidas.</footer>
+<div class="modalback" id="modalBack" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal"><div class="modalhead"><h2 id="modalTitle">Detalhes da partida</h2><button class="iconbtn close" id="modalClose" aria-label="Fechar">×</button></div><div id="modalBody"></div></div></div>
+<script>
+(() => {
+'use strict';
+const API='https://v3.football.api-sports.io';
+const $=id=>document.getElementById(id);
+let apiKey='', fixtures=[], leagues=[], countries=[], mode='all', timer=null, notificationPermission='default';
+const favorites=new Set(JSON.parse(localStorage.getItem('futebolAgoraFavorites')||'[]'));
+const nowLocalDate=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+$('datePick').value=nowLocalDate();
+$('seasonPick').value=new Date().getFullYear();
+function escapeHTML(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function notice(message,type='warn'){ $('notice').innerHTML=message?`<div class="notice ${type}">${message}</div>`:''; }
+function setStatus(text,kind=''){ $('statusText').textContent=text;$('statusDot').className='dot '+kind; }
+function fmtTime(date){try{return new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}).format(new Date(date));}catch{return '--:--';}}
+function fmtDate(date){try{return new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(date));}catch{return date||'';}}
+function statusKind(s){if(['1H','2H','HT','ET','P','LIVE','BT'].includes(s))return'live';if(['FT','AET','PEN'].includes(s))return'finished';if(['NS','TBD'].includes(s))return'upcoming';return'other';}
+function statusText(f){const s=f.fixture?.status||{};if(statusKind(s.short)==='live')return `${s.elapsed??''}${s.elapsed!=null?"'":''} AO VIVO`;if(statusKind(s.short)==='finished')return s.short==='PEN'?'Pênaltis':s.short==='AET'?'Após prorrogação':'Encerrado';return fmtTime(f.fixture?.date);}
+function teamRow(team,score){return `<div class="team"><img src="${escapeHTML(team.logo||'')}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="team-name">${escapeHTML(team.name||'Time')}</span>${score!==null&&score!==undefined?`<span class="score">${score}</span>`:''}</div>`;}
+function fixtureMatchesFilters(f){
+ const kind=statusKind(f.fixture?.status?.short);
+ if(mode==='live'&&kind!=='live')return false;
+ if(mode==='finished'&&kind!=='finished')return false;
+ if(mode==='upcoming'&&kind!=='upcoming')return false;
+ if((mode==='favorites'||$('navFav').dataset.active==='1')&&!favorites.has(String(f.teams?.home?.id))&&!favorites.has(String(f.teams?.away?.id)))return false;
+ const q=$('searchInput').value.trim().toLocaleLowerCase('pt-BR');
+ if(q&&!`${f.teams?.home?.name||''} ${f.teams?.away?.name||''} ${f.league?.name||''} ${f.league?.country||''}`.toLocaleLowerCase('pt-BR').includes(q))return false;
+ const c=$('countryPick').value,l=$('leaguePick').value;
+ if(c&&String(f.league?.country)!==c)return false;
+ if(l&&String(f.league?.id)!==l)return false;
+ return true;
+}
+function renderMatches(){
+ let list=fixtures.filter(fixtureMatchesFilters);
+ if($('sortPick').value==='league')list.sort((a,b)=>(a.league?.name||'').localeCompare(b.league?.name||''));
+ else list.sort((a,b)=>new Date(a.fixture?.date)-new Date(b.fixture?.date));
+ $('matchCount').textContent=`${list.length} ${list.length===1?'partida':'partidas'}`;
+ const date=$('datePick').value;
+ $('listHeading').textContent=mode==='live'?'Partidas ao vivo':mode==='finished'?'Resultados encerrados':mode==='upcoming'?'Próximas partidas':mode==='favorites'?'Times favoritos':`Partidas de ${fmtDate(date+'T12:00:00')}`;
+ if(!list.length){$('matches').innerHTML=`<div class="empty"><strong>Nenhuma partida encontrada</strong>Tente outra data ou remova alguns filtros. Se a API não retornou jogos, o site não cria resultados de exemplo.</div>`;return;}
+ const groups=new Map();
+ list.forEach(f=>{const key=`${f.league?.id||'x'}-${f.league?.name||'Campeonato'}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(f);});
+ $('matches').innerHTML=[...groups.values()].map(group=>{
+ const l=group[0].league||{};
+ return `<div class="league"><div class="leaguehead">${l.logo?`<img src="${escapeHTML(l.logo)}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}<div><div class="league-name">${escapeHTML(l.name||'Campeonato')}</div><div class="league-sub">${escapeHTML(l.country||'')} ${l.round?'· '+escapeHTML(l.round):''}</div></div></div>`+
+ group.map(f=>{const id=String(f.fixture?.id);const live=statusKind(f.fixture?.status?.short)==='live';const homeFav=favorites.has(String(f.teams?.home?.id)),awayFav=favorites.has(String(f.teams?.away?.id));return `<div class="match"><div class="kick ${live?'live-label':''}">${escapeHTML(statusText(f))}</div><div class="teams">${teamRow(f.teams?.home,f.goals?.home)}${teamRow(f.teams?.away,f.goals?.away)}</div><div class="match-actions"><button class="iconbtn details" data-details="${escapeHTML(id)}" title="Estatísticas e escalações">Detalhes</button><button class="iconbtn ${homeFav?'fav':''}" data-fav="${escapeHTML(f.teams?.home?.id)}" data-name="${escapeHTML(f.teams?.home?.name)}" title="Favoritar ${escapeHTML(f.teams?.home?.name)}">${homeFav?'★':'☆'}</button><button class="iconbtn ${awayFav?'fav':''}" data-fav="${escapeHTML(f.teams?.away?.id)}" data-name="${escapeHTML(f.teams?.away?.name)}" title="Favoritar ${escapeHTML(f.teams?.away?.name)}">${awayFav?'★':'☆'}</button></div></div>`}).join('')+'</div>';
+ }).join('');
+}
+async function api(path){
+ if(!apiKey)throw new Error('Insira sua chave da API-Football para carregar dados.');
+ const res=await fetch(API+path,{headers:{'x-apisports-key':apiKey}});
+ let data;try{data=await res.json()}catch{throw new Error('A API retornou uma resposta que não pôde ser lida.');}
+ if(!res.ok)throw new Error(data?.errors?.token||data?.message||`Erro HTTP ${res.status}. Confira a chave e os limites da API.`);
+ if(data.errors&&Object.keys(data.errors).length)throw new Error(Object.values(data.errors).join(' · '));
+ return data.response||[];
+}
+async function withLoading(btn,fn){const old=btn.textContent;btn.disabled=true;btn.innerHTML='<span class="loading"><span class="spinner"></span>Carregando</span>';try{await fn()}catch(e){notice(escapeHTML(e.message),'error');setStatus('Erro na conexão');}finally{btn.disabled=false;btn.textContent=old;}}
+async function loadFixtures(){
+ if(!apiKey){notice('Para carregar partidas reais, conecte uma chave válida da API-Football.','warn');return;}
+ const liveMode=mode==='live';
+ const path=liveMode?'/fixtures?live=all':`/fixtures?date=${encodeURIComponent($('datePick').value||nowLocalDate())}&timezone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone||'America/Sao_Paulo')}`;
+ const result=await api(path);
+ const previous=new Map(fixtures.map(f=>[String(f.fixture?.id),`${f.goals?.home}-${f.goals?.away}-${f.fixture?.status?.short}`]));
+ fixtures=result;
+ setStatus('Conectado · dados recebidos','ok');notice(`${fixtures.length} partidas retornadas pela API. Última consulta: ${new Date().toLocaleTimeString('pt-BR')}.`,'good');
+ renderMatches();
+ if(notificationPermission==='granted'){
+  for(const f of fixtures){const id=String(f.fixture?.id),signature=`${f.goals?.home}-${f.goals?.away}-${f.fixture?.status?.short}`;if(previous.has(id)&&previous.get(id)!==signature)new Notification('Atualização de partida',{body:`${f.teams?.home?.name} ${f.goals?.home??'-'} x ${f.goals?.away??'-'} ${f.teams?.away?.name}`});}
+ }
+}
+async function loadLeagues(){
+ if(!apiKey)return;
+ try{
+  const season=Number($('seasonPick').value)||new Date().getFullYear();
+  leagues=await api(`/leagues?season=${season}`);
+  const countriesList=[...new Set(leagues.map(x=>x.country?.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  $('countryPick').innerHTML='<option value="">Todos os países</option>'+countriesList.map(c=>`<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`).join('');
+  $('leaguePick').innerHTML='<option value="">Todos os campeonatos</option>'+leagues.slice().sort((a,b)=>(a.country?.name||'').localeCompare(b.country?.name||'')||(a.league?.name||'').localeCompare(b.league?.name||'')).map(x=>`<option value="${x.league.id}">${escapeHTML(x.country?.name||'Internacional')} · ${escapeHTML(x.league?.name||'')}</option>`).join('');
+ }catch(e){notice('A conexão foi feita, mas não foi possível carregar a lista de campeonatos: '+escapeHTML(e.message),'warn');}
+}
+async function connect(){
+ apiKey=$('apiKey').value.trim();
+ if(!apiKey){notice('Cole a chave da API-Football antes de conectar.','warn');return;}
+ await withLoading($('connectBtn'),async()=>{await api('/status');setStatus('Conectado · validando dados','ok');notice('Chave validada. Carregando partidas e campeonatos disponíveis...','good');await Promise.all([loadLeagues(),loadFixtures()]);});
+}
+function toggleFavorite(id,name){
+ id=String(id);if(favorites.has(id))favorites.delete(id);else favorites.add(id);
+ localStorage.setItem('futebolAgoraFavorites',JSON.stringify([...favorites]));
+ renderMatches();
+}
+async function showDetails(id){
+ const f=fixtures.find(x=>String(x.fixture?.id)===String(id));
+ if(!f)return;
+ $('modalTitle').textContent=`${f.teams?.home?.name||'Mandante'} x ${f.teams?.away?.name||'Visitante'}`;
+ $('modalBody').innerHTML='<div class="loading"><span class="spinner"></span>Buscando estatísticas e escalações disponíveis...</div>';
+ $('modalBack').classList.add('open');
+ const score=`${f.goals?.home??'-'} × ${f.goals?.away??'-'}`;
+ try{
+  const [stats,lineups]=await Promise.allSettled([api(`/fixtures/statistics?fixture=${id}`),api(`/fixtures/lineups?fixture=${id}`)]);
+  let html=`<div class="grid2" style="margin-bottom:18px"><div class="stat"><div class="label">Placar</div><div class="value">${escapeHTML(score)}</div></div><div class="stat"><div class="label">Situação</div><div class="value" style="font-size:17px">${escapeHTML(statusText(f))}</div></div></div>`;
+  if(stats.status==='fulfilled'&&stats.value.length){
+   html+='<h3>Estatísticas</h3><div class="tablewrap"><table class="data-table"><thead><tr><th>Indicador</th><th>'+escapeHTML(f.teams?.home?.name||'Mandante')+'</th><th>'+escapeHTML(f.teams?.away?.name||'Visitante')+'</th></tr></thead><tbody>';
+   for(const side of stats.value){for(const s of side.statistics||[])html+=`<tr><td>${escapeHTML(s.type)}</td><td>${escapeHTML(s.value??'—')}</td><td>${escapeHTML((stats.value.find(x=>x.team?.id!==side.team?.id)?.statistics||[]).find(y=>y.type===s.type)?.value??'—')}</td></tr>`;}
+   html+='</tbody></table></div>';
+  }else html+='<p class="muted">Estatísticas ainda não estão disponíveis para esta partida.</p>';
+  if(lineups.status==='fulfilled'&&lineups.value.length){
+   html+='<h3 style="margin-top:22px">Escalações</h3><div class="grid2">';
+   for(const side of lineups.value){html+=`<div><h4>${escapeHTML(side.team?.name||'Equipe')} ${side.formation?`· ${escapeHTML(side.formation)}`:''}</h4><div class="muted" style="font-size:12px">Titulares</div>`;for(const p of side.startXI||[])html+=`<div class="playerline"><span>${escapeHTML(p.player?.name||'Jogador')}</span><b>${escapeHTML(p.player?.number??'')}</b></div>`;html+='</div>';}
+   html+='</div>';
+  }else html+='<p class="muted" style="margin-top:18px">Escalações ainda não foram publicadas ou não são cobertas para esta competição.</p>';
+  $('modalBody').innerHTML=html;
+ }catch(e){$('modalBody').innerHTML=`<div class="notice error">${escapeHTML(e.message)}</div>`;}
+}
+async function loadScorers(){
+ const leagueId=$('leaguePick').value,season=Number($('seasonPick').value);
+ if(!leagueId){notice('Selecione um campeonato no filtro antes de buscar os artilheiros.','warn');return;}
+ await withLoading($('topScorersBtn'),async()=>{
+  const rows=await api(`/players/topscorers?league=${encodeURIComponent(leagueId)}&season=${encodeURIComponent(season)}`);
+  if(!rows.length){$('scorers').innerHTML='<div class="muted">A API não retornou artilheiros para essa competição e temporada.</div>';return;}
+  $('scorers').innerHTML='<div class="tablewrap"><table class="data-table"><thead><tr><th>#</th><th>Jogador</th><th>Time</th><th>Gols</th><th>Assistências</th></tr></thead><tbody>'+rows.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHTML(r.player?.name||'—')}</td><td>${escapeHTML(r.statistics?.[0]?.team?.name||'—')}</td><td><b>${escapeHTML(r.statistics?.[0]?.goals?.total??0)}</b></td><td>${escapeHTML(r.statistics?.[0]?.goals?.assists??'—')}</td></tr>`).join('')+'</tbody></table></div>';
+ });
+}
+$('connectBtn').addEventListener('click',connect);
+$('refreshBtn').addEventListener('click',()=>withLoading($('refreshBtn'),loadFixtures));
+$('datePick').addEventListener('change',()=>{mode='all';document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));loadFixtures().catch(e=>notice(escapeHTML(e.message),'error'));});
+$('searchInput').addEventListener('input',renderMatches);
+$('sortPick').addEventListener('change',renderMatches);
+$('countryPick').addEventListener('change',renderMatches);
+$('leaguePick').addEventListener('change',renderMatches);
+$('topScorersBtn').addEventListener('click',loadScorers);
+document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x===b));$('navFav').dataset.active='0';if(mode==='live')loadFixtures().catch(e=>notice(escapeHTML(e.message),'error'));else if(mode==='all'||mode==='finished'||mode==='upcoming'||mode==='favorites')renderMatches();}));
+$('navToday').addEventListener('click',()=>{$('datePick').value=nowLocalDate();mode='all';document.querySelector('[data-mode="all"]').click();loadFixtures().catch(e=>notice(escapeHTML(e.message),'error'));});
+$('navLive').addEventListener('click',()=>{mode='live';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode==='live'));loadFixtures().catch(e=>notice(escapeHTML(e.message),'error'));});
+$('navFav').addEventListener('click',()=>{mode='favorites';$('navFav').dataset.active='1';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode==='favorites'));renderMatches();});
+$('matches').addEventListener('click',e=>{const d=e.target.closest('[data-details]');if(d)showDetails(d.dataset.details);const f=e.target.closest('[data-fav]');if(f)toggleFavorite(f.dataset.fav,f.dataset.name);});
+$('modalClose').addEventListener('click',()=>$('modalBack').classList.remove('open'));
+$('modalBack').addEventListener('click',e=>{if(e.target===$('modalBack'))$('modalBack').classList.remove('open');});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('modalBack').classList.remove('open');});
+$('notifyBtn').addEventListener('click',async()=>{
+ if(!('Notification'in window)){$('notifyStatus').textContent='Este navegador não oferece notificações.';return;}
+ try{notificationPermission=await Notification.requestPermission();$('notifyStatus').textContent=notificationPermission==='granted'?'Notificações permitidas. Atualize as partidas para detectar mudanças.':notificationPermission==='denied'?'Permissão negada nas configurações do navegador.':'Permissão não concedida.';}
+ catch{$('notifyStatus').textContent='Não foi possível solicitar permissão.';}
+});
+window.addEventListener('online',()=>{if(apiKey)loadFixtures().catch(()=>{});});
+})();
+</script>
+</body>
+</html>
