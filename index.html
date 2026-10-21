@@ -298,8 +298,9 @@ const fdHeaders = () => FD_PROXY ? {} : {"X-Auth-Token": FOOTBALL_DATA_KEY};
 
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 
-// "Onde assistir": no Android tenta abrir o app Futenium 2026; se não estiver instalado
-// (ou em outro aparelho), abre a busca "onde assistir" de sempre. Deixe vazio para desligar.
+// "Onde assistir": no Android abre a página do app Futenium 2026 na Play Store do aparelho
+// (lá aparece "Abrir") e deixa a busca "onde assistir" aberta no navegador.
+// Fora do Android abre só a busca. Deixe vazio para desligar.
 const FUTENIUM_PACKAGE = "com.futteniiumm26.app";
 const PAST_DAYS = 2;     // quantos dias para trás buscar
 const FUTURE_DAYS = 7;   // quantos dias para frente buscar
@@ -934,19 +935,15 @@ async function fdLoop() {
   setTimeout(fdLoop, ok ? FD_POLL_MS : 30000);
 }
 
-/* ---------- Onde assistir: tenta abrir o app Futenium (Android) ---------- */
+/* ---------- Onde assistir: abre a Play Store no Futenium (Android) e mostra a busca ---------- */
 const IS_ANDROID = /Android/i.test(navigator.userAgent || "");
-
-function futeniumIntent(fallbackUrl) {
-  return "intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;" +
-    `package=${FUTENIUM_PACKAGE};S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`;
-}
 
 games.addEventListener("click", event => {
   const link = event.target.closest("a.watch");
   if (!link || !FUTENIUM_PACKAGE || !IS_ANDROID) return;   // fora do Android: link normal
   event.preventDefault();
-  window.location.href = futeniumIntent(link.href);
+  window.open(link.href, "_blank", "noopener");             // a busca fica aberta no navegador
+  window.location.href = `market://details?id=${FUTENIUM_PACKAGE}`;   // abre a Play Store do aparelho
 });
 
 /* ---------- Detalhes do jogo: resumo, escalações e estatísticas (ESPN) ---------- */
