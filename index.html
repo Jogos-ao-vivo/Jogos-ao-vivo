@@ -390,7 +390,7 @@ async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
   if (rangeSupported) {
     const range = `${ymd(dayOffset(-past))}-${ymd(dayOffset(future))}`;
     try {
-      const data = await getJSON(`${base}?dates=${range}`);
+      const data = await getJSON(`${base}?dates=${range}${past + future > 30 ? "&limit=1000" : ""}`);
       if ((data.events || []).length) return tag(data.events);
     } catch (error) {
       if (error.status === 400) rangeSupported = false;
@@ -408,8 +408,8 @@ async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
 }
 
 // football-data.org: uma única consulta traz as partidas de todas as ligas
-function normalizeFD(m) {
-  const leagueId = FD_LEAGUE_BY_CODE[m.competition?.code];
+function normalizeFD(m, fallbackCode) {
+  const leagueId = FD_LEAGUE_BY_CODE[m.competition?.code || fallbackCode];
   if (!leagueId || m.status === "CANCELLED") return null;
 
   const st = m.status;
@@ -459,6 +459,22 @@ async function fetchFootballData(past = PAST_DAYS, future = FUTURE_DAYS) {
   const data = await getJSON(url, 15000, {"X-Auth-Token": FOOTBALL_DATA_KEY});
   const list = (data.matches || []).map(normalizeFD).filter(Boolean);
   fdCache = {key, time: Date.now(), data: list};
+  return list;
+}
+
+// Temporada inteira de uma liga (todos os jogos: passados, de hoje e futuros)
+let fdSeasonCache = {};
+
+async function fetchFootballDataSeason(code) {
+  const cached = fdSeasonCache[code];
+  if (cached && Date.now() - cached.time < 20000) return cached.data;
+  const data = await getJSON(
+    `https://api.football-data.org/v4/competitions/${code}/matches`,
+    20000,
+    {"X-Auth-Token": FOOTBALL_DATA_KEY}
+  );
+  const list = (data.matches || []).map(m => normalizeFD(m, code)).filter(Boolean);
+  fdSeasonCache[code] = {time: Date.now(), data: list};
   return list;
 }
 
@@ -520,11 +536,14 @@ async function loadGames(silent = false) {
   const useFD = Boolean(FOOTBALL_DATA_KEY) && ids.some(id => FD_CODES[id]);
 
   // football-data.org para as ligas dela; ESPN para as demais
+  const wide = selected !== "all";               // liga escolhida: calendário inteiro
+  const past = wide ? 300 : PAST_DAYS;
+  const future = wide ? 300 : FUTURE_DAYS;
   const fdPromise = useFD
-    ? fetchFootballData().then(list => ({ok:true, list}), () => ({ok:false, list:[]}))
+    ? (wide ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), () => ({ok:false, list:[]}))
     : Promise.resolve({ok:false, list:[]});
   const espnIds = ids.filter(id => !(useFD && FD_CODES[id]));
-  const espnPromise = Promise.allSettled(espnIds.map(id => fetchEspn(id)));
+  const espnPromise = Promise.allSettled(espnIds.map(id => fetchEspn(id, past, future)));
   const [fd, espnResults] = await Promise.all([fdPromise, espnPromise]);
   if (myRequest !== requestNumber) return;
 
@@ -532,7 +551,7 @@ async function loadGames(silent = false) {
   let fallbackResults = [];
   if (useFD && !fd.ok) {
     const fallbackIds = ids.filter(id => FD_CODES[id]);
-    fallbackResults = await Promise.allSettled(fallbackIds.map(id => fetchEspn(id)));
+    fallbackResults = await Promise.allSettled(fallbackIds.map(id => fetchEspn(id, past, future)));
     if (myRequest !== requestNumber) return;
   }
 
@@ -572,7 +591,7 @@ filtersEl.addEventListener("click", event => {
   const button = event.target.closest("button[data-league]");
   if (!button) return;
   selected = button.dataset.league;
-  visibleCount = PAGE_SIZE;
+  visibleCount = selected === "all" ? PAGE_SIZE : Infinity;   // liga escolhida: mostra TODOS os jogos
   filtersEl.querySelectorAll(".filter").forEach(b =>
     b.classList.toggle("active", b === button)
   );
