@@ -87,7 +87,7 @@ h2{font-size:20px;margin:0}
 .btn{
   display:flex;align-items:center;justify-content:center;
   text-decoration:none;text-align:center;padding:10px 8px;
-  border-radius:99px;font-size:12px;font-weight:800;flex:1;
+  border-radius:9px;font-size:12px;font-weight:800;flex:1;
 }
 .watch{background:var(--green);color:#06140d}
 .details{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
@@ -100,13 +100,9 @@ h2{font-size:20px;margin:0}
 .source{
   display:inline-flex;align-items:center;gap:7px;margin:0 0 10px;padding:6px 12px;
   border-radius:999px;font-size:12px;font-weight:700;
-  border:1px solid var(--line);background:var(--panel);color:var(--muted);
+  border:1px solid #42e69a55;background:#42e69a14;color:var(--green);
 }
-.source:empty{display:none}
 .source::before{content:"●";font-size:10px}
-.source.ok{color:var(--green);border-color:#42e69a55;background:#42e69a14}
-.source.warn{color:var(--yellow);border-color:#ffd54a55;background:#ffd54a14}
-.source.error{color:var(--red);border-color:#ff646e55;background:#ff646e14}
 .empty,.loading{
   grid-column:1/-1;text-align:center;padding:35px;
   border:1px dashed var(--line);border-radius:14px;color:var(--muted);
@@ -249,7 +245,7 @@ button.btn.details{border:1px solid var(--line)}
     <h2 id="sectionTitle">Eventos e horários</h2>
     <button class="filter" id="refresh">↻ Atualizar</button>
   </div>
-  <div class="source info" id="sourceInfo">A verificar estado da API-Football...</div>
+  <div class="source" id="sourceInfo">Fonte: ESPN + football-data.org</div>
   <div class="muted" id="updated">Horários exibidos no fuso do seu dispositivo.</div>
 
   <section class="grid" id="games" aria-live="polite">
@@ -274,34 +270,24 @@ button.btn.details{border:1px solid var(--line)}
 
 <footer>
   FUTPLAY · Calendário e placares de futebol e MMA<br>
-  Dados esportivos de API-Football, football-data.org, FighterAPI e ESPN.<br>
+  Dados esportivos providos por ESPN e football-data.org.<br>
   As transmissões pertencem aos respectivos detentores dos direitos.
 </footer>
 
 <script>
-// ===== Configurações da API =====
-const FOOTBALL_DATA_KEY = "";
-const FD_PROXY = "https://futplay-api.brunosamuel1524.workers.dev";
-const FD_BASE = FD_PROXY ? FD_PROXY.replace(/\/+$/, "") : "https://api.football-data.org";
-const FD_ENABLED = Boolean(FD_PROXY || FOOTBALL_DATA_KEY);
-const fdHeaders = () => FD_PROXY ? {} : {"X-Auth-Token": FOOTBALL_DATA_KEY};
-
+// ===== Configurações das Fontes =====
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 const ESPN_MMA_BASE = "https://site.api.espn.com/apis/site/v2/sports/mma/mma";
-
 const FUTENIUM_PACKAGE = "com.futteniiumm26.app";
+
 const PAST_DAYS = 2;     
 const FUTURE_DAYS = 7;   
 const PAGE_SIZE = 60;    
-const LIVE_POLL_MS = 1000;      
-const FD_POLL_MS = 10000;       
-const OVERLAY_MS = 20000;       
-const OVERLAY_END_MS = 600000;  
+const LIVE_POLL_MS = 2000;      
 const FULL_REFRESH_MS = 30000;  
 
 const leagues = {
   "ufc":"UFC / MMA",
-  "all-football":"Futebol Mundial (API-Football)",
   "bra.1":"Brasileirão Série A",
   "bra.2":"Brasileirão Série B",
   "bra.copa_do_brasil":"Copa do Brasil",
@@ -318,32 +304,15 @@ const leagues = {
   "fifa.world":"Copa do Mundo"
 };
 
-const FD_CODES = {
-  "bra.1":"BSA",
-  "uefa.champions":"CL",
-  "eng.1":"PL",
-  "esp.1":"PD",
-  "ita.1":"SA",
-  "ger.1":"BL1",
-  "fra.1":"FL1",
-  "por.1":"PPL",
-  "fifa.world":"WC"
-};
-const FD_LEAGUE_BY_CODE = Object.fromEntries(Object.entries(FD_CODES).map(([id, code]) => [code, id]));
-
 let selected = "all";
 let matches = [];
 let visibleCount = PAGE_SIZE;
 let requestNumber = 0;
-let lastFailures = 0;
-let lastTotal = 0;
 let lastHTML = "";
 let polling = false;
-let overlays = {};
 
 const games = document.getElementById("games");
 const updated = document.getElementById("updated");
-const sourceInfo = document.getElementById("sourceInfo");
 const filtersEl = document.getElementById("filters");
 
 function esc(value) {
@@ -494,27 +463,6 @@ function updateCard(event) {
   }
 }
 
-/* ---------- Validação de Status Corrigida (Endpoint da API-Football) ---------- */
-async function checkApiFootballStatus() {
-  try {
-    const response = await fetch(`${FD_PROXY}/apifootball/status`, {signal: AbortSignal.timeout(6000)});
-    if (response.ok) {
-      const data = await response.json();
-      const requestsUsed = data.response?.requests?.current || data.requests?.current || 0;
-      const requestsLimit = data.response?.requests?.limit_day || data.requests?.limit_day || 100;
-      
-      sourceInfo.className = "source ok";
-      sourceInfo.textContent = `● API-Football: Conectada (${requestsUsed}/${requestsLimit} requisições hoje) · ESPN/FD ativos`;
-    } else {
-      sourceInfo.className = "source error";
-      sourceInfo.textContent = `● API-Football: Erro HTTP ${response.status} (Chave inválida ou limite excedido)`;
-    }
-  } catch (err) {
-    sourceInfo.className = "source warn";
-    sourceInfo.textContent = `● API-Football: Falha na conexão ou bloqueada · Usando secundárias`;
-  }
-}
-
 /* ---------- Busca de dados ---------- */
 function ymd(d, sep = "") {
   return [
@@ -530,11 +478,11 @@ function dayOffset(n) {
   return d;
 }
 
-async function getJSON(url, ms = 15000, headers = {}) {
+async function getJSON(url, ms = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
-    const response = await fetch(url, {signal: controller.signal, headers});
+    const response = await fetch(url, {signal: controller.signal});
     if (!response.ok) {
       const error = new Error(`HTTP ${response.status}`);
       error.status = response.status;
@@ -550,7 +498,6 @@ let rangeSupported = true;
 
 async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
   if (id === "ufc") return fetchEspnMMA();
-  if (id === "all-football") return fetchApiFootballWorld();
 
   const tag = events => (events || []).map(event => ({...event, leagueId:id, source:"espn"}));
   const base = `${ESPN_BASE}/${id}/scoreboard`;
@@ -571,39 +518,6 @@ async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
   } catch (error) {
     if (error.status >= 400 && error.status < 500) return [];
     throw error;
-  }
-}
-
-async function fetchApiFootballWorld() {
-  try {
-    const today = ymd(new Date(), "-");
-    const data = await getJSON(`${FD_PROXY}/apifootball/fixtures?date=${today}`);
-    return (data.response || []).map(m => {
-      const st = m.fixture.status.short;
-      const live = ["1H", "HT", "2H", "ET", "P", "LIVE"].includes(st);
-      const done = ["FT", "AET", "PEN"].includes(st);
-      const state = live ? "in" : done ? "post" : "pre";
-
-      return {
-        id: "af-" + m.fixture.id,
-        leagueId: "all-football",
-        leagueName: m.league.name || "Futebol Mundial",
-        source: "apifootball",
-        date: m.fixture.date,
-        status: {
-          type: { state, completed: done, detail: m.fixture.status.long },
-          displayClock: m.fixture.status.elapsed ? `${m.fixture.status.elapsed}'` : ""
-        },
-        competitions: [{
-          competitors: [
-            { homeAway: "home", score: m.goals.home, team: { displayName: m.teams.home.name, logo: m.teams.home.logo } },
-            { homeAway: "away", score: m.goals.away, team: { displayName: m.teams.away.name, logo: m.teams.away.logo } }
-          ]
-        }]
-      };
-    });
-  } catch (err) {
-    return [];
   }
 }
 
@@ -649,75 +563,6 @@ async function fetchEspnMMA() {
   }
 }
 
-function normalizeFD(m, fallbackCode) {
-  const leagueId = FD_LEAGUE_BY_CODE[m.competition?.code || fallbackCode];
-  if (!leagueId || m.status === "CANCELLED") return null;
-
-  const st = m.status;
-  const live = st === "IN_PLAY" || st === "PAUSED" || st === "LIVE";
-  const done = st === "FINISHED" || st === "AWARDED";
-  const state = live ? "in" : done ? "post" : "pre";
-  const minute = m.minute;
-  const period = live && st !== "PAUSED" && minute != null ? (minute > 45 ? 2 : 1) : undefined;
-
-  const ft = m.score?.fullTime || {};
-  const hasScore = state !== "pre" && ft.home != null && ft.away != null;
-  const teamOf = t => ({displayName: t?.shortName || t?.name, logo: t?.crest || ""});
-
-  return {
-    id: "fd-" + m.id,
-    leagueId,
-    source: "fd",
-    date: m.utcDate,
-    status: {
-      type: {
-        state,
-        completed: done,
-        name: st === "PAUSED" ? "STATUS_HALFTIME" : st,
-        detail: st === "PAUSED" ? "Intervalo" : "Em andamento"
-      },
-      period,
-      displayClock: minute != null ? `${minute}'` : ""
-    },
-    competitions: [{
-      competitors: [
-        {homeAway:"home", score: hasScore ? ft.home : null, team: teamOf(m.homeTeam)},
-        {homeAway:"away", score: hasScore ? ft.away : null, team: teamOf(m.awayTeam)}
-      ]
-    }],
-    links: []
-  };
-}
-
-let fdCache = {key:"", time:0, data:[]};
-
-async function fetchFootballData(past = PAST_DAYS, future = FUTURE_DAYS) {
-  const key = `${past}-${future}`;
-  if (fdCache.key === key && Date.now() - fdCache.time < 8000) return fdCache.data;
-  const codes = Object.values(FD_CODES).join(",");
-  const url = `${FD_BASE}/v4/matches` +
-    `?dateFrom=${ymd(dayOffset(-past), "-")}&dateTo=${ymd(dayOffset(future), "-")}&competitions=${codes}`;
-  const data = await getJSON(url, 15000, fdHeaders());
-  const list = (data.matches || []).map(normalizeFD).filter(Boolean);
-  fdCache = {key, time: Date.now(), data: list};
-  return list;
-}
-
-let fdSeasonCache = {};
-
-async function fetchFootballDataSeason(code) {
-  const cached = fdSeasonCache[code];
-  if (cached && Date.now() - cached.time < 20000) return cached.data;
-  const data = await getJSON(
-    `${FD_BASE}/v4/competitions/${code}/matches`,
-    20000,
-    fdHeaders()
-  );
-  const list = (data.matches || []).map(m => normalizeFD(m, code)).filter(Boolean);
-  fdSeasonCache[code] = {time: Date.now(), data: list};
-  return list;
-}
-
 /* ---------- Ordenação ---------- */
 function rank(event) {
   const t = event.status?.type;
@@ -739,11 +584,7 @@ function sortMatches(list) {
 function render() {
   let html;
   if (!matches.length) {
-    html = `<div class="empty">
-      ${lastFailures && lastFailures === lastTotal
-        ? '<span class="error">Não foi possível carregar os dados esportivos.</span><br>Verifique a conexão ou tente novamente mais tarde.'
-        : 'Nenhuma partida foi encontrada nesta consulta.'}
-    </div>`;
+    html = `<div class="empty">Nenhuma partida foi encontrada nesta consulta.</div>`;
   } else {
     html = matches.slice(0, visibleCount).map(event =>
       card(event, event.leagueName || leagues[event.leagueId] || event.leagueId)
@@ -768,45 +609,20 @@ async function loadGames(silent = false) {
   }
 
   const ids = selected === "all" ? Object.keys(leagues) : [selected];
-  const useFD = FD_ENABLED && ids.some(id => FD_CODES[id]);
-
   const wide = selected !== "all";               
   const past = wide ? 300 : PAST_DAYS;
   const future = wide ? 300 : FUTURE_DAYS;
-  const fdPromise = useFD
-    ? (wide && FD_CODES[selected] ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
-    : Promise.resolve({ok:false, list:[]});
-  const espnIds = ids.filter(id => !(useFD && FD_CODES[id]));
-  const espnPromise = Promise.allSettled(espnIds.map(id => fetchEspn(id, past, future)));
-  const [fd, espnResults] = await Promise.all([fdPromise, espnPromise]);
+
+  const espnResults = await Promise.allSettled(ids.map(id => fetchEspn(id, past, future)));
   if (myRequest !== requestNumber) return;
 
-  let fallbackResults = [];
-  if (useFD && !fd.ok) {
-    const fallbackIds = ids.filter(id => FD_CODES[id]);
-    fallbackResults = await Promise.allSettled(fallbackIds.map(id => fetchEspn(id, past, future)));
-    if (myRequest !== requestNumber) return;
-  }
-
-  const results = [...espnResults, ...fallbackResults];
-  const failures = results.filter(r => r.status === "rejected").length + (useFD && !fd.ok ? 1 : 0);
-  const total = results.length + (useFD ? 1 : 0);
-
   const unique = new Map();
-  results.forEach(r => {
+  espnResults.forEach(r => {
     if (r.status !== "fulfilled") return;
     r.value.forEach(event => unique.set(cardKey(event), event));
   });
-  if (fd.ok) {
-    fd.list.filter(event => ids.includes(event.leagueId))
-      .forEach(event => unique.set(cardKey(event), event));
-  }
-  const all = Array.from(unique.values()).map(e => e.source === "fd" ? applyOverlay(e) : e);
 
-  matches = sortMatches(all);
-  checkApiFootballStatus();
-  lastFailures = failures;
-  lastTotal = total;
+  matches = sortMatches(Array.from(unique.values()));
   render();
 
   updated.textContent = "Última consulta: " +
@@ -874,7 +690,7 @@ async function liveLoop() {
   setTimeout(liveLoop, ok ? LIVE_POLL_MS : 5000);   
 }
 
-/* ---------- Detalhes do evento (Tradução e Nomes Certos) ---------- */
+/* ---------- Detalhes do evento ---------- */
 const STAT_NAMES = {
   possessionPct:"Posse de bola", totalShots:"Finalizações", shotsOnTarget:"Finalizações no gol",
   blockedShots:"Finalizações bloqueadas", wonCorners:"Escanteios", foulsCommitted:"Faltas",
@@ -890,7 +706,6 @@ const detailEl = document.getElementById("detail");
 const detailHead = document.getElementById("detailHead");
 const detailTabs = document.getElementById("detailTabs");
 const detailBody = document.getElementById("detailBody");
-const detailIds = {};      
 let detail = {key:null, event:null, tab:"resumo", data:null, state:"idle"};
 let detailTimer = null;
 let detailTick = 0;
@@ -971,33 +786,6 @@ function positionLabel(abbr) {
   return POSITIONS[base] || abbr || "";
 }
 
-async function resolveEspnId(event) {
-  if (event.source === "espn") return event.id;
-  if (detailIds[event.id]) return detailIds[event.id];
-  const d = new Date(event.date);
-  if (Number.isNaN(d.getTime())) return null;
-
-  const base = `${ESPN_BASE}/${event.leagueId}/scoreboard`;
-  const from = ymd(new Date(d.getTime() - 86400000));
-  const to = ymd(new Date(d.getTime() + 86400000));
-  let list = [];
-  let failed = false;
-  try {
-    list = (await getJSON(`${base}?dates=${from}-${to}`)).events || [];
-  } catch (error) {
-    try {
-      list = (await getJSON(`${base}?dates=${ymd(d)}`)).events || [];
-    } catch (error2) {
-      failed = true;
-    }
-  }
-  if (failed) throw new Error("ESPN indisponível");
-
-  const found = list.map(e => ({...e, leagueId:event.leagueId})).find(e => sameGame(e, event));
-  if (found) detailIds[event.id] = found.id;
-  return found ? found.id : null;
-}
-
 async function loadDetail(silent = false) {
   const key = detail.key;
   const event = detail.event;
@@ -1016,15 +804,7 @@ async function loadDetail(silent = false) {
       return;
     }
 
-    const id = await resolveEspnId(event);
-    if (key !== detail.key) return;
-    if (!id) {
-      detail.state = "none";
-      detail.data = null;
-      renderDetail();
-      return;
-    }
-    const data = await getJSON(`${ESPN_BASE}/${event.leagueId}/summary?event=${encodeURIComponent(id)}`);
+    const data = await getJSON(`${ESPN_BASE}/${event.leagueId}/summary?event=${encodeURIComponent(event.id)}`);
     if (key !== detail.key) return;
     detail.data = data;
     detail.state = "ok";
@@ -1226,35 +1006,6 @@ function lineupsHTML(data) {
   return legend + field + (subs ? `<div class="lineups" style="margin-top:18px">${subs}</div>` : "");
 }
 
-function countSubs(data, homeTeam, awayTeam) {
-  const hId = String(homeTeam?.id ?? "");
-  const aId = String(awayTeam?.id ?? "");
-  const hName = norm(homeTeam?.displayName || homeTeam?.name);
-  const aName = norm(awayTeam?.displayName || awayTeam?.name);
-  let h = 0, a = 0;
-
-  const add = (teamId, teamName) => {
-    const id = String(teamId ?? "");
-    if (id && id === hId) { h++; return true; }
-    if (id && id === aId) { a++; return true; }
-    const n = norm(teamName);
-    if (n && similar(n, hName) && !similar(n, aName)) { h++; return true; }
-    if (n && similar(n, aName) && !similar(n, hName)) { a++; return true; }
-    return false;
-  };
-  const nameFromText = text => (String(text || "").match(/^Substitution, (.+?)\./) || [])[1];
-
-  (data.keyEvents || []).forEach(k => {
-    if (!/substitution/i.test(k.type?.text || "")) return;
-    add(k.team?.id, k.team?.displayName || nameFromText(k.text));
-  });
-
-  return {h, a};
-}
-
-const norm = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const similar = (a, b) => a && b && (a.includes(b) || b.includes(a) || a.slice(0, 4) === b.slice(0, 4));
-
 function statsHTML(data) {
   const teams = data.boxscore?.teams || [];
   if (teams.length < 2) {
@@ -1268,15 +1019,6 @@ function statsHTML(data) {
   const awayStats = Object.fromEntries((away.statistics || []).map(s => [s.name, s]));
   const rows = (home.statistics || []).filter(s => s.displayValue != null && awayStats[s.name]?.displayValue != null);
 
-  const gameState = data.header?.competitions?.[0]?.status?.type?.state;
-  if (gameState !== "pre" && detail.event?.leagueId !== "ufc") {
-    const subs = countSubs(data, home.team, away.team);
-    rows.unshift({
-      name: "substitutions", label: "Substituições", displayValue: String(subs.h),
-      away: {displayValue: String(subs.a)}
-    });
-    awayStats.substitutions = {displayValue: String(subs.a)};
-  }
   if (!rows.length) {
     return `<div class="sheet-note">As estatísticas ainda não estão disponíveis para este evento.</div>`;
   }
