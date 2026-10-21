@@ -87,7 +87,7 @@ h2{font-size:20px;margin:0}
 .btn{
   display:flex;align-items:center;justify-content:center;
   text-decoration:none;text-align:center;padding:10px 8px;
-  border-radius:9px;font-size:12px;font-weight:800;flex:1;
+  border-radius:99px;font-size:12px;font-weight:800;flex:1;
 }
 .watch{background:var(--green);color:#06140d}
 .details{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
@@ -249,7 +249,7 @@ button.btn.details{border:1px solid var(--line)}
     <h2 id="sectionTitle">Eventos e horários</h2>
     <button class="filter" id="refresh">↻ Atualizar</button>
   </div>
-  <div class="source info" id="sourceInfo">Testando status das APIs...</div>
+  <div class="source info" id="sourceInfo">A verificar estado da API-Football...</div>
   <div class="muted" id="updated">Horários exibidos no fuso do seu dispositivo.</div>
 
   <section class="grid" id="games" aria-live="polite">
@@ -494,14 +494,15 @@ function updateCard(event) {
   }
 }
 
-/* ---------- Validação e Status ---------- */
+/* ---------- Validação de Status Corrigida (Endpoint da API-Football) ---------- */
 async function checkApiFootballStatus() {
   try {
-    const response = await fetch(`${FD_PROXY}/apifootball/v3/status`, {signal: AbortSignal.timeout(6000)});
+    const response = await fetch(`${FD_PROXY}/apifootball/status`, {signal: AbortSignal.timeout(6000)});
     if (response.ok) {
       const data = await response.json();
-      const requestsUsed = data.requests?.current || 0;
-      const requestsLimit = data.requests?.limit_day || 100;
+      const requestsUsed = data.response?.requests?.current || data.requests?.current || 0;
+      const requestsLimit = data.response?.requests?.limit_day || data.requests?.limit_day || 100;
+      
       sourceInfo.className = "source ok";
       sourceInfo.textContent = `● API-Football: Conectada (${requestsUsed}/${requestsLimit} requisições hoje) · ESPN/FD ativos`;
     } else {
@@ -576,7 +577,7 @@ async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
 async function fetchApiFootballWorld() {
   try {
     const today = ymd(new Date(), "-");
-    const data = await getJSON(`${FD_PROXY}/apifootball/v3/fixtures?date=${today}`);
+    const data = await getJSON(`${FD_PROXY}/apifootball/fixtures?date=${today}`);
     return (data.response || []).map(m => {
       const st = m.fixture.status.short;
       const live = ["1H", "HT", "2H", "ET", "P", "LIVE"].includes(st);
