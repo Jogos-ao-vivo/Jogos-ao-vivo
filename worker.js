@@ -37,8 +37,7 @@ export default {
       const targetPath = url.pathname.replace("/apifootball", "");
       const targetUrl = "https://v3.football.api-sports.io" + targetPath + url.search;
       
-      // Coloque sua chave da API-Football nas Variáveis de Ambiente da Cloudflare como `API_FOOTBALL_KEY`
-      // ou substitua a string abaixo se preferir hardcodar diretamente:
+      // Chave da API-Football configurada diretamente no Worker
       const apiKey = env.API_FOOTBALL_KEY || "fdee527619fe1292aeb3235b94cc5c4d";
 
       try {
