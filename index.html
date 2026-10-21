@@ -116,6 +116,22 @@ footer{border-top:1px solid var(--line);margin-top:45px;padding:25px 20px;color:
 button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offset:3px}
 button.btn{border:0;cursor:pointer;font:inherit;font-size:12px;font-weight:800}
 body.modal-open{overflow:hidden}
+.live-section{margin:4px 0 10px}
+.live-dot{
+  display:inline-block;width:11px;height:11px;margin-right:9px;border-radius:50%;
+  background:#ff3b30;box-shadow:0 0 0 0 #ff3b3099;animation:livePulse 1.6s ease-out infinite;
+}
+@keyframes livePulse{
+  0%{box-shadow:0 0 0 0 #ff3b3099}
+  70%{box-shadow:0 0 0 9px #ff3b3000}
+  100%{box-shadow:0 0 0 0 #ff3b3000}
+}
+@media(prefers-reduced-motion:reduce){.live-dot{animation:none}}
+.live-section .match{border-color:#ff3b3050}
+.live-empty{
+  grid-column:1/-1;padding:18px;border:1px dashed var(--line);border-radius:14px;
+  color:var(--muted);text-align:center;font-size:14px;
+}
 .search{display:flex;gap:9px;margin:24px 0 0}
 .search input{
   flex:1;min-width:0;background:var(--panel);color:var(--text);
@@ -196,6 +212,13 @@ body.modal-open{overflow:hidden}
   </div>
 
   <div class="filters" id="filters"></div>
+
+  <section class="live-section" id="liveSection" aria-labelledby="liveTitle">
+    <div class="section-head">
+      <h2 id="liveTitle"><span class="live-dot" aria-hidden="true"></span>Ao vivo <span class="muted" id="liveCount"></span></h2>
+    </div>
+    <div class="grid" id="liveGrid" aria-live="polite"></div>
+  </section>
 
   <div class="section-head">
     <h2 id="sectionTitle">Jogos e horários</h2>
@@ -445,16 +468,16 @@ function card(event, leagueName) {
 // Atualiza só o placar, o status e o tempo de um cartão (sem recriar logos)
 function updateCard(event) {
   if (modal && modal.key === cardKey(event)) renderModalHead();
-  const el = games.querySelector(`[data-key="${cardKey(event)}"]`);
-  if (!el) return;
-  const {state, mid} = dynamicParts(event);
-  const stamp = `${state.cls}|${state.label}|${mid}`;
-  if (el.dataset.stamp === stamp) return;
-  el.dataset.stamp = stamp;
-  const st = el.querySelector(".status");
-  st.className = "status " + state.cls;
-  st.textContent = state.label;
-  el.querySelector(".mid").innerHTML = mid;
+  document.querySelectorAll(`[data-key="${cardKey(event)}"]`).forEach(el => {
+    const {state, mid} = dynamicParts(event);
+    const stamp = `${state.cls}|${state.label}|${mid}`;
+    if (el.dataset.stamp === stamp) return;
+    el.dataset.stamp = stamp;
+    const st = el.querySelector(".status");
+    st.className = "status " + state.cls;
+    st.textContent = state.label;
+    el.querySelector(".mid").innerHTML = mid;
+  });
 }
 
 /* ---------- Busca de dados ---------- */
@@ -820,7 +843,7 @@ document.getElementById("refresh").addEventListener("click", () => {
 async function pollLive() {
   if (polling || document.hidden) return true;
   const liveLeagues = [...new Set(
-    matches.filter(e => e.source === "espn" && e.status?.type?.state === "in").map(e => e.leagueId)
+    [...matches, ...liveList].filter(e => e.source === "espn" && e.status?.type?.state === "in").map(e => e.leagueId)
   )];
   if (!liveLeagues.length) return true;
 
@@ -834,11 +857,7 @@ async function pollLive() {
     results.forEach(result => {
       if (result.status !== "fulfilled") { ok = false; return; }
       result.value.forEach(fresh => {
-        const index = matches.findIndex(m => cardKey(m) === cardKey(fresh));
-        if (index < 0) return;
-        if (rank(matches[index]) !== rank(fresh)) needsFullReload = true; // começou/terminou
-        matches[index] = fresh;
-        updateCard(fresh);
+        if (applyFresh(fresh)) needsFullReload = true; // começou/terminou
       });
     });
     if (ok) {
@@ -848,7 +867,7 @@ async function pollLive() {
   } finally {
     polling = false;
   }
-  if (needsFullReload) loadGames(true);
+  if (needsFullReload) { loadGames(true); loadLive(true); }
   return ok;
 }
 
@@ -860,7 +879,7 @@ async function liveLoop() {
 // Jogos da football-data.org: uma única consulta a cada 10 s (limite do plano grátis)
 async function pollLiveFD() {
   if (!FD_ENABLED || document.hidden) return true;
-  if (!matches.some(e => e.source === "fd" && e.status?.type?.state === "in")) return true;
+  if (![...matches, ...liveList].some(e => e.source === "fd" && e.status?.type?.state === "in")) return true;
 
   const token = requestNumber;
   let reload = false;
@@ -868,16 +887,12 @@ async function pollLiveFD() {
     const fresh = await fetchFootballData();
     if (token !== requestNumber) return true;
     fresh.forEach(f => {
-      const index = matches.findIndex(m => cardKey(m) === cardKey(f));
-      if (index < 0) return;
-      if (rank(matches[index]) !== rank(f)) reload = true;
-      matches[index] = f;
-      updateCard(f);
+      if (applyFresh(f)) reload = true;
     });
   } catch (error) {
     return false;
   }
-  if (reload) loadGames(true);
+  if (reload) { loadGames(true); loadLive(true); }
   return true;
 }
 
@@ -885,6 +900,92 @@ async function fdLoop() {
   const ok = await pollLiveFD();
   setTimeout(fdLoop, ok ? FD_POLL_MS : 30000);
 }
+
+/* ---------- Seção "Ao vivo": todos os jogos em andamento, em qualquer competição ---------- */
+const LIVE_MIN_GAP_MS = 15000;     // no mínimo 15 s entre buscas da lista ao vivo
+const LIVE_CHECK_MS = 30000;       // confere se começou/terminou algum jogo a cada 30 s
+const liveGrid = document.getElementById("liveGrid");
+const liveCount = document.getElementById("liveCount");
+let liveList = [];
+let liveHTML = "";
+let liveLoadedAt = 0;
+let liveLoading = false;
+let liveFailed = false;
+
+function findEvent(key) {
+  return matches.find(m => cardKey(m) === key) || liveList.find(m => cardKey(m) === key);
+}
+
+// Atualiza um jogo na lista principal e na seção "Ao vivo"; devolve true se ele começou/terminou
+function applyFresh(fresh) {
+  const key = cardKey(fresh);
+  let changed = false, found = false;
+  [matches, liveList].forEach(list => {
+    const i = list.findIndex(m => cardKey(m) === key);
+    if (i < 0) return;
+    found = true;
+    if (rank(list[i]) !== rank(fresh)) changed = true;
+    list[i] = fresh;
+  });
+  if (found) updateCard(fresh);
+  return changed;
+}
+
+function renderLive() {
+  liveCount.textContent = liveList.length ? `(${liveList.length})` : "";
+  let html;
+  if (liveList.length) {
+    html = liveList.map(event =>
+      card(event, event.leagueName || leagues[event.leagueId] || event.leagueId)
+    ).join("");
+  } else if (!liveLoadedAt) {
+    html = '<div class="live-empty">Procurando jogos ao vivo...</div>';
+  } else if (liveFailed) {
+    html = '<div class="live-empty">Não foi possível verificar os jogos ao vivo agora. Tentando de novo.</div>';
+  } else {
+    html = '<div class="live-empty">Nenhum jogo ao vivo agora.</div>';
+  }
+  if (html === liveHTML) return;
+  liveHTML = html;
+  liveGrid.innerHTML = html;
+}
+
+async function loadLive(force = false) {
+  if (liveLoading) return;
+  if (!force && Date.now() - liveLoadedAt < LIVE_MIN_GAP_MS) return;
+  liveLoading = true;
+  try {
+    const ids = Object.keys(leagues);
+    const all = [];
+    let fdOk = false;
+    if (FD_ENABLED && ids.some(id => FD_CODES[id])) {
+      try { all.push(...await fetchFootballData()); fdOk = true; } catch (error) { /* usa a ESPN */ }
+    }
+    const espnIds = ids.filter(id => !(fdOk && FD_CODES[id]));
+    const results = await Promise.allSettled(espnIds.map(id => fetchEspn(id, 1, 0)));
+    results.forEach(r => { if (r.status === "fulfilled") all.push(...r.value); });
+
+    const everythingFailed = !fdOk && results.length > 0 && results.every(r => r.status === "rejected");
+    liveFailed = everythingFailed;
+    if (!everythingFailed) {
+      const unique = new Map();
+      all.filter(e => e.status?.type?.state === "in").forEach(e => unique.set(cardKey(e), e));
+      const order = id => ids.indexOf(id);
+      liveList = Array.from(unique.values()).sort((a, b) =>
+        order(a.leagueId) - order(b.leagueId) || new Date(a.date) - new Date(b.date)
+      );
+    }
+    liveLoadedAt = Date.now();
+  } finally {
+    liveLoading = false;
+  }
+  renderLive();
+}
+
+liveGrid.addEventListener("click", event => {
+  const open = event.target.closest("[data-open]");
+  if (open) openMatch(open.dataset.open, open);
+});
 
 /* ---------- Pesquisa de times: todos os jogos da temporada ---------- */
 const SEARCH_CACHE_MS = 10 * 60 * 1000;   // calendário completo guardado por 10 minutos
@@ -1128,7 +1229,7 @@ function evInfo(type) {
 }
 
 function currentModalEvent() {
-  return matches.find(m => cardKey(m) === modal.key) || modal.event;
+  return findEvent(modal.key) || modal.event;
 }
 
 /* Liga o jogo do football-data.org ao mesmo jogo na ESPN (para trazer lances e escalações) */
@@ -1181,7 +1282,7 @@ function fetchSummary(leagueId, id) {
 
 /* Abrir e fechar */
 function openMatch(key, opener) {
-  const event = matches.find(m => cardKey(m) === key);
+  const event = findEvent(key);
   if (!event) return;
   if (modal) clearTimeout(modal.timer);
   const soon = statusText(event).cls === "soon";
@@ -1391,12 +1492,15 @@ document.addEventListener("keydown", event => {
 });
 
 renderFilters();
+renderLive();
 loadGames();
+loadLive(true);
 fdLoop();
+setInterval(() => { if (!document.hidden) loadLive(); }, LIVE_CHECK_MS);
 setInterval(() => { if (!document.hidden) loadGames(true); }, FULL_REFRESH_MS);
 liveLoop();
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) { loadGames(true); }
+  if (!document.hidden) { loadGames(true); loadLive(true); }
 });
 </script>
 </body>
