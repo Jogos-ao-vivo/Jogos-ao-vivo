@@ -111,6 +111,49 @@ h2{font-size:20px;margin:0}
 .error{color:#ff9b9b}
 footer{border-top:1px solid var(--line);margin-top:45px;padding:25px 20px;color:var(--muted);font-size:12px;text-align:center;line-height:1.8}
 button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+button.btn{border:0;cursor:pointer;font:inherit;font-size:12px;font-weight:800}
+body.modal-open{overflow:hidden}
+.modal{
+  position:fixed;inset:0;z-index:20;display:none;justify-content:center;align-items:flex-start;
+  background:#05080dd9;backdrop-filter:blur(6px);padding:24px 14px;overflow-y:auto;
+}
+.modal.open{display:flex}
+.modal-box{width:100%;max-width:760px;background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.modal-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line)}
+.mm-head{padding:16px 18px 2px}
+.mm-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mm-head .teams{margin:14px 0 10px}
+.mm-head .team img{width:52px;height:52px}
+.mm-head .score{font-size:30px}
+.tabs{display:flex;gap:8px;overflow:auto;padding:12px 18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.tabs .filter{padding:8px 13px;font-size:13px}
+.mm-body{padding:8px 18px 22px;min-height:200px}
+.mm-empty{text-align:center;color:var(--muted);padding:40px 10px;line-height:1.7}
+.mm-empty .btn{display:inline-flex;margin-top:14px;padding:11px 20px}
+.ev{display:grid;grid-template-columns:52px 30px 1fr;gap:8px;align-items:start;padding:11px 0;border-bottom:1px solid var(--line)}
+.ev:last-child{border-bottom:0}
+.ev-t{font-weight:800;color:var(--green);font-size:13px}
+.ev-i{text-align:center}
+.ev .muted{margin-top:3px;line-height:1.5}
+.lineups{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding-top:12px}
+.lineups h3{font-size:15px;margin:0 0 8px}
+.lineups h4{font-size:12px;color:var(--muted);margin:14px 0 6px}
+.pl{list-style:none;margin:0;padding:0}
+.pl li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.pl .num{min-width:24px;font-weight:800;color:var(--green)}
+.pl small{margin-left:auto;color:var(--muted)}
+.st-head,.st-row{display:grid;grid-template-columns:1fr 2fr 1fr;gap:8px;text-align:center;align-items:center}
+.st-head{padding:12px 0;font-weight:800;font-size:13px}
+.st-row{padding:11px 0;border-top:1px solid var(--line);font-size:14px}
+.st-row span{color:var(--muted);font-size:13px}
+.video{position:relative;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;margin-top:12px}
+.video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.mm-link{display:inline-block;margin-top:16px;color:var(--muted);font-size:12px}
+@media(max-width:650px){
+ .modal{padding:0}
+ .modal-box{border-radius:0;min-height:100%;border:0}
+ .lineups{grid-template-columns:1fr}
+}
 @media(max-width:650px){
  .container{padding:17px 12px}
  .nav{padding:14px}
@@ -149,6 +192,18 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
     <div class="loading">Carregando partidas...</div>
   </section>
 </main>
+
+<div class="modal" id="matchModal" role="dialog" aria-modal="true" aria-label="Detalhes do jogo">
+  <div class="modal-box">
+    <div class="modal-bar">
+      <strong>Jogo</strong>
+      <button class="filter modal-close" type="button" data-close>✕ Fechar</button>
+    </div>
+    <div class="mm-head" id="mmHead"></div>
+    <div class="tabs" id="mmTabs"></div>
+    <div class="mm-body" id="mmBody" aria-live="polite"></div>
+  </div>
+</div>
 
 <footer>
   FUTPLAY · Calendário e placares de futebol<br>
@@ -330,7 +385,6 @@ function card(event, leagueName) {
   const homeName = h.displayName || h.name || "Time da casa";
   const awayName = a.displayName || a.name || "Time visitante";
   const watchURL = searchWatch(homeName, awayName, leagueName);
-  const eventURL = event.links?.find(l => l.rel?.includes("summary"))?.href;
 
   return `<article class="match" data-key="${esc(cardKey(event))}">
     <div class="match-top">
@@ -345,16 +399,15 @@ function card(event, leagueName) {
       ${teamHTML({name:awayName,logo:a.logo})}
     </div>
     <div class="actions">
-      <a class="btn watch" href="${esc(watchURL)}" target="_blank" rel="noopener noreferrer">▶ Onde assistir</a>
-      ${eventURL
-        ? `<a class="btn details" href="${esc(eventURL)}" target="_blank" rel="noopener noreferrer">Detalhes</a>`
-        : ""}
+      <button class="btn watch" type="button" data-open="${esc(cardKey(event))}">▶ Ver jogo</button>
+      <a class="btn details" href="${esc(watchURL)}" target="_blank" rel="noopener noreferrer">Onde assistir</a>
     </div>
   </article>`;
 }
 
 // Atualiza só o placar, o status e o tempo de um cartão (sem recriar logos)
 function updateCard(event) {
+  if (modal && modal.key === cardKey(event)) renderModalHead();
   const el = games.querySelector(`[data-key="${cardKey(event)}"]`);
   if (!el) return;
   const {state, mid} = dynamicParts(event);
@@ -629,6 +682,7 @@ async function loadGames(silent = false) {
   lastFailures = failures;
   lastTotal = total;
   render();
+  if (modal) renderModalHead();
 
   updated.textContent = "Última consulta: " +
     new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) +
@@ -647,6 +701,8 @@ filtersEl.addEventListener("click", event => {
 });
 
 games.addEventListener("click", event => {
+  const open = event.target.closest("[data-open]");
+  if (open) { openMatch(open.dataset.open, open); return; }
   if (!event.target.closest("#more")) return;
   visibleCount += PAGE_SIZE;
   render();
@@ -725,6 +781,331 @@ async function fdLoop() {
   const ok = await pollLiveFD();
   setTimeout(fdLoop, ok ? FD_POLL_MS : 30000);
 }
+
+/* ---------- Ver jogo: lances, narração, escalações, estatísticas e transmissão ---------- */
+// Transmissão oficial dentro do site: só funciona com canais que PERMITEM incorporar o vídeo
+// (por exemplo, um canal oficial no YouTube). Preencha por liga (id da liga) ou use "todos":
+//   youtubeChannel: ID do canal (começa com UC...) -> mostra a transmissão ao vivo do canal
+//   youtubeVideo:   ID de um vídeo/live específico
+//   embedUrl:       endereço https de um player oficial que permita incorporação
+// Exemplo: "bra.1": {nome:"Canal oficial", youtubeChannel:"UCxxxxxxxxxxxxxxxxxxxxxx"},
+const OFFICIAL_STREAMS = {};
+const MODAL_POLL_MS = 8000;   // jogo aberto: lances e estatísticas a cada 8 segundos
+
+const modalEl = document.getElementById("matchModal");
+const modalHead = document.getElementById("mmHead");
+const modalTabs = document.getElementById("mmTabs");
+const modalBody = document.getElementById("mmBody");
+let modal = null;
+let modalToken = 0;
+let modalOpener = null;
+const espnAroundCache = {};
+
+const MODAL_TABS = [
+  ["lances","Lances"],
+  ["narracao","Narração"],
+  ["escalacoes","Escalações"],
+  ["stats","Estatísticas"],
+  ["video","Transmissão"]
+];
+
+const EV_LABELS = [
+  ["own goal","Gol contra","⚽"],
+  ["goal","Gol","⚽"],
+  ["yellow card","Cartão amarelo","🟨"],
+  ["red card","Cartão vermelho","🟥"],
+  ["substitution","Substituição","🔄"],
+  ["penalty","Pênalti","🎯"],
+  ["var","VAR","📺"],
+  ["halftime","Intervalo","⏸"],
+  ["kickoff","Início do jogo","▶"],
+  ["full time","Fim de jogo","🏁"],
+  ["end regular time","Fim do tempo normal","🏁"]
+];
+
+const STAT_LABELS = {
+  possessionPct:"Posse de bola (%)",
+  totalShots:"Finalizações",
+  shotsOnTarget:"Chutes no gol",
+  blockedShots:"Chutes bloqueados",
+  wonCorners:"Escanteios",
+  foulsCommitted:"Faltas",
+  yellowCards:"Cartões amarelos",
+  redCards:"Cartões vermelhos",
+  offsides:"Impedimentos",
+  saves:"Defesas",
+  totalPasses:"Passes",
+  accuratePasses:"Passes certos"
+};
+
+function evInfo(type) {
+  const t = String(type || "").toLowerCase();
+  const found = EV_LABELS.find(([key]) => t.includes(key));
+  return found ? {label:found[1], icon:found[2]} : {label:type || "Lance", icon:"•"};
+}
+
+function currentModalEvent() {
+  return matches.find(m => cardKey(m) === modal.key) || modal.event;
+}
+
+/* Liga o jogo do football-data.org ao mesmo jogo na ESPN (para trazer lances e escalações) */
+function normTeam(name) {
+  return String(name || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(w => w && !["fc","cf","sc","ec","afc","de","da","do","club","clube"].includes(w))
+    .join(" ");
+}
+
+function sameTeam(a, b) {
+  const x = normTeam(a), y = normTeam(b);
+  if (!x || !y) return false;
+  if (x === y || x.includes(y) || y.includes(x)) return true;
+  const ty = y.split(" ");
+  return x.split(" ").some(t => t.length >= 4 && ty.includes(t));
+}
+
+async function fetchEspnAround(id, date) {
+  const d = new Date(date);
+  const key = `${id}-${ymd(d)}`;
+  const cached = espnAroundCache[key];
+  if (cached && Date.now() - cached.time < 60000) return cached.list;
+  const a = new Date(d); a.setDate(a.getDate() - 1);
+  const b = new Date(d); b.setDate(b.getDate() + 1);
+  const data = await getJSON(`${ESPN_BASE}/${id}/scoreboard?dates=${ymd(a)}-${ymd(b)}`);
+  const list = (data.events || []).map(e => ({...e, leagueId:id, source:"espn"}));
+  espnAroundCache[key] = {time: Date.now(), list};
+  return list;
+}
+
+async function resolveEspn(event) {
+  if (event.source === "espn") return event;
+  const list = await fetchEspnAround(event.leagueId, event.date);
+  const {home, away} = dynamicParts(event);
+  const t = new Date(event.date).getTime();
+  const name = p => p.team?.displayName || p.team?.name;
+  return list.find(e => {
+    const p = dynamicParts(e);
+    return sameTeam(name(p.home), name(home)) && sameTeam(name(p.away), name(away)) &&
+      Math.abs(new Date(e.date).getTime() - t) < 36 * 3600 * 1000;
+  }) || null;
+}
+
+function fetchSummary(leagueId, id) {
+  return getJSON(`${ESPN_BASE}/${leagueId}/summary?event=${encodeURIComponent(id)}`, 15000);
+}
+
+/* Abrir e fechar */
+function openMatch(key, opener) {
+  const event = matches.find(m => cardKey(m) === key);
+  if (!event) return;
+  if (modal) clearTimeout(modal.timer);
+  const soon = statusText(event).cls === "soon";
+  modal = {
+    key, event, espn: undefined, data: null, status: "loading",
+    tab: soon ? "escalacoes" : "lances",
+    timer: null, token: ++modalToken, lastHead: "", lastBody: ""
+  };
+  modalOpener = opener || null;
+  modalEl.classList.add("open");
+  document.body.classList.add("modal-open");
+  modalEl.scrollTop = 0;
+  renderModalHead();
+  renderModalTabs();
+  renderModalBody();
+  modalEl.querySelector(".modal-close").focus();
+  loadModal();
+}
+
+function closeMatch() {
+  if (!modal) return;
+  clearTimeout(modal.timer);
+  modal = null;
+  modalToken++;
+  modalEl.classList.remove("open");
+  document.body.classList.remove("modal-open");
+  modalBody.innerHTML = "";   // também encerra o vídeo, se houver
+  if (modalOpener && document.contains(modalOpener)) modalOpener.focus();
+}
+
+/* Busca os dados e repete enquanto o jogo está ao vivo */
+async function loadModal() {
+  const m = modal;
+  if (!m) return;
+  const token = m.token;
+  const alive = () => modal && modal.token === token;
+  try {
+    if (m.espn === undefined) {
+      const found = await resolveEspn(currentModalEvent());
+      if (!alive()) return;
+      m.espn = found;
+    }
+    if (m.espn) {
+      m.data = await fetchSummary(m.espn.leagueId, m.espn.id);
+      if (!alive()) return;
+      m.status = "ok";
+    } else {
+      m.status = "none";
+    }
+  } catch (error) {
+    if (!alive()) return;
+    m.status = error.status === 404 ? "none" : (m.data ? "ok" : "error");
+  }
+  renderModalBody();
+  const live = currentModalEvent().status?.type?.state === "in";
+  if (m.status === "error") m.timer = setTimeout(loadModal, 15000);
+  else if (m.status === "ok" && live) m.timer = setTimeout(loadModal, MODAL_POLL_MS);
+}
+
+/* Desenho da janela */
+function renderModalHead() {
+  if (!modal) return;
+  const ev = currentModalEvent();
+  const {home, away, state, mid} = dynamicParts(ev);
+  const h = home.team || {}, a = away.team || {};
+  const leagueName = ev.leagueName || leagues[ev.leagueId] || ev.leagueId;
+  const html = `<div class="mm-top">
+      <div class="league">${esc(leagueName)}</div>
+      <div class="status ${state.cls}">${esc(state.label)}</div>
+    </div>
+    <div class="teams">
+      ${teamHTML({name:h.displayName || h.name || "Time da casa", logo:h.logo})}
+      <div class="mid">${mid}</div>
+      ${teamHTML({name:a.displayName || a.name || "Time visitante", logo:a.logo})}
+    </div>`;
+  if (html === modal.lastHead) return;
+  modal.lastHead = html;
+  modalHead.innerHTML = html;
+}
+
+function renderModalTabs() {
+  if (!modal) return;
+  modalTabs.innerHTML = MODAL_TABS.map(([id, name]) =>
+    `<button class="filter${id === modal.tab ? " active" : ""}" type="button" data-tab="${id}">${esc(name)}</button>`
+  ).join("");
+}
+
+const emptyBox = text => `<div class="mm-empty">${text}</div>`;
+
+function eventsHTML(d) {
+  const list = [...(d.keyEvents || [])].reverse();
+  if (!list.length) return emptyBox("Ainda não há lances registrados.");
+  return list.map(e => {
+    const info = evInfo(e.type?.text || e.type?.type);
+    const who = (e.participants || []).map(p => p.athlete?.displayName).filter(Boolean).join(", ");
+    const team = e.team?.displayName ? ` · ${esc(e.team.displayName)}` : "";
+    return `<div class="ev">
+      <span class="ev-t">${esc(e.clock?.displayValue || "")}</span>
+      <span class="ev-i">${info.icon}</span>
+      <div><b>${esc(info.label)}</b>${team}<div class="muted">${esc(e.shortText || e.text || who)}</div></div>
+    </div>`;
+  }).join("");
+}
+
+function commentaryHTML(d) {
+  let list = [...(d.commentary || [])];
+  if (!list.length) return emptyBox("A narração deste jogo ainda não está disponível.");
+  if (list.every(c => c.sequence != null)) list.sort((x, y) => y.sequence - x.sequence);
+  return list.slice(0, 120).map(c => `<div class="ev">
+      <span class="ev-t">${esc(c.time?.displayValue || "")}</span>
+      <span class="ev-i">•</span>
+      <div>${esc(c.text || "")}</div>
+    </div>`).join("");
+}
+
+function lineupsHTML(d) {
+  const rosters = [...(d.rosters || [])].sort((x, y) => (y.homeAway === "home") - (x.homeAway === "home"));
+  if (!rosters.length || !rosters.some(r => (r.roster || []).length)) {
+    return emptyBox("A escalação ainda não foi divulgada.");
+  }
+  const line = p => `<li><span class="num">${esc(p.jersey ?? "")}</span>${esc(p.athlete?.displayName || p.athlete?.fullName || "")}<small>${esc(p.position?.abbreviation || "")}</small></li>`;
+  const column = r => {
+    const list = r.roster || [];
+    const starters = list.some(p => p.starter) ? list.filter(p => p.starter) : list;
+    const bench = list.some(p => p.starter) ? list.filter(p => !p.starter) : [];
+    return `<div>
+      <h3>${esc(r.team?.displayName || "")}${r.formation ? ` <span class="muted">${esc(r.formation)}</span>` : ""}</h3>
+      <ul class="pl">${starters.map(line).join("")}</ul>
+      ${bench.length ? `<h4>Reservas</h4><ul class="pl">${bench.map(line).join("")}</ul>` : ""}
+    </div>`;
+  };
+  return `<div class="lineups">${rosters.map(column).join("")}</div>`;
+}
+
+function statsHTML(d) {
+  const teams = d.boxscore?.teams || [];
+  if (teams.length < 2) return emptyBox("As estatísticas ainda não estão disponíveis.");
+  const home = teams.find(t => t.homeAway === "home") || teams[0];
+  const away = teams.find(t => t.homeAway === "away" && t !== home) || teams.find(t => t !== home) || teams[1];
+  const val = (t, name) => t.statistics?.find(s => s.name === name)?.displayValue;
+  const rows = Object.keys(STAT_LABELS)
+    .filter(k => val(home, k) != null || val(away, k) != null)
+    .map(k => `<div class="st-row"><b>${esc(val(home, k) ?? "-")}</b><span>${esc(STAT_LABELS[k])}</span><b>${esc(val(away, k) ?? "-")}</b></div>`);
+  if (!rows.length) return emptyBox("As estatísticas ainda não estão disponíveis.");
+  return `<div class="st-head"><span>${esc(home.team?.displayName || "")}</span><span></span><span>${esc(away.team?.displayName || "")}</span></div>${rows.join("")}`;
+}
+
+function videoHTML(ev) {
+  const cfg = OFFICIAL_STREAMS[ev.leagueId] || OFFICIAL_STREAMS.todos;
+  let src = "";
+  if (cfg) {
+    if (cfg.youtubeChannel) src = `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(cfg.youtubeChannel)}&autoplay=1`;
+    else if (cfg.youtubeVideo) src = `https://www.youtube.com/embed/${encodeURIComponent(cfg.youtubeVideo)}?autoplay=1`;
+    else if (/^https:\/\//i.test(cfg.embedUrl || "")) src = cfg.embedUrl;
+  }
+  if (src) {
+    return `<div class="video"><iframe src="${esc(src)}" title="Transmissão oficial" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+      <p class="muted">${esc(cfg.nome || "Transmissão oficial")}. Se o vídeo não abrir, o canal pode não permitir a exibição fora do site dele.</p>`;
+  }
+  const {home, away} = dynamicParts(ev);
+  const leagueName = ev.leagueName || leagues[ev.leagueId] || ev.leagueId;
+  const url = searchWatch(home.team?.displayName || home.team?.name || "", away.team?.displayName || away.team?.name || "", leagueName);
+  return emptyBox(`Esta competição ainda não tem uma transmissão oficial configurada no site.<br>
+    Veja em qual canal ou serviço o jogo passa na sua região.<br>
+    <a class="btn watch" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Onde assistir</a>`);
+}
+
+function renderModalBody() {
+  if (!modal) return;
+  const ev = currentModalEvent();
+  let html;
+  if (modal.tab === "video") {
+    html = videoHTML(ev);
+  } else if (modal.status === "loading") {
+    html = emptyBox("Carregando dados do jogo...");
+  } else if (modal.status === "none") {
+    html = emptyBox("Esta partida ainda não tem lances, escalações ou estatísticas nesta fonte.");
+  } else if (modal.status === "error") {
+    html = emptyBox('<span class="error">Não foi possível carregar os dados do jogo.</span><br>Tentando de novo automaticamente.');
+  } else {
+    const d = modal.data || {};
+    html = modal.tab === "lances" ? eventsHTML(d)
+         : modal.tab === "narracao" ? commentaryHTML(d)
+         : modal.tab === "escalacoes" ? lineupsHTML(d)
+         : statsHTML(d);
+    const link = modal.espn?.links?.find(l => l.rel?.includes("summary"))?.href;
+    if (link) html += `<a class="mm-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Abrir página completa na ESPN</a>`;
+  }
+  if (html === modal.lastBody) return;
+  modal.lastBody = html;
+  modalBody.innerHTML = html;
+}
+
+modalEl.addEventListener("click", event => {
+  if (event.target === modalEl || event.target.closest("[data-close]")) { closeMatch(); return; }
+  const tab = event.target.closest("[data-tab]");
+  if (tab && modal) {
+    modal.tab = tab.dataset.tab;
+    modal.lastBody = "";
+    renderModalTabs();
+    renderModalBody();
+  }
+});
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && modal) closeMatch();
+});
 
 renderFilters();
 loadGames();
