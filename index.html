@@ -273,9 +273,8 @@ button.btn.details{border:1px solid var(--line)}
 
 <footer>
   FUTPLAY · Calendário e placares de futebol e MMA<br>
-  Dados esportivos de football-data.org, FighterAPI e endpoints públicos da ESPN.
+  Dados esportivos de API-Football, football-data.org, FighterAPI e ESPN.<br>
   As transmissões pertencem aos respectivos detentores dos direitos.
-  A disponibilidade dos eventos depende da competição e da região.
 </footer>
 
 <script>
@@ -301,6 +300,7 @@ const FULL_REFRESH_MS = 30000;
 
 const leagues = {
   "ufc":"UFC / MMA",
+  "all-football":"Futebol Mundial (API-Football)",
   "bra.1":"Brasileirão Série A",
   "bra.2":"Brasileirão Série B",
   "bra.copa_do_brasil":"Copa do Brasil",
@@ -314,8 +314,7 @@ const leagues = {
   "ger.1":"Bundesliga",
   "fra.1":"Ligue 1",
   "por.1":"Liga Portugal",
-  "fifa.world":"Copa do Mundo",
-  "fifa.worldq.conmebol":"Eliminatórias Sul-Americanas"
+  "fifa.world":"Copa do Mundo"
 };
 
 const FD_CODES = {
@@ -447,8 +446,8 @@ function card(event, leagueName) {
   const h = home.team || {};
   const a = away.team || {};
 
-  const homeName = h.displayName || h.name || "Lutador / Time 1";
-  const awayName = a.displayName || a.name || "Lutador / Time 2";
+  const homeName = h.displayName || h.name || "Time 1";
+  const awayName = a.displayName || a.name || "Time 2";
   const watchURL = searchWatch(homeName, awayName, leagueName);
 
   return `<article class="match" data-key="${esc(cardKey(event))}" data-score="${esc(scoreKey)}">
@@ -528,9 +527,8 @@ async function getJSON(url, ms = 15000, headers = {}) {
 let rangeSupported = true;
 
 async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
-  if (id === "ufc") {
-    return fetchEspnMMA();
-  }
+  if (id === "ufc") return fetchEspnMMA();
+  if (id === "all-football") return fetchApiFootballWorld();
 
   const tag = events => (events || []).map(event => ({...event, leagueId:id, source:"espn"}));
   const base = `${ESPN_BASE}/${id}/scoreboard`;
@@ -551,6 +549,39 @@ async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
   } catch (error) {
     if (error.status >= 400 && error.status < 500) return [];
     throw error;
+  }
+}
+
+async function fetchApiFootballWorld() {
+  try {
+    const today = ymd(new Date(), "-");
+    const data = await getJSON(`${FD_PROXY}/apifootball/v3/fixtures?date=${today}`);
+    return (data.response || []).map(m => {
+      const st = m.fixture.status.short;
+      const live = ["1H", "HT", "2H", "ET", "P", "LIVE"].includes(st);
+      const done = ["FT", "AET", "PEN"].includes(st);
+      const state = live ? "in" : done ? "post" : "pre";
+
+      return {
+        id: "af-" + m.fixture.id,
+        leagueId: "all-football",
+        leagueName: m.league.name || "Futebol Mundial",
+        source: "apifootball",
+        date: m.fixture.date,
+        status: {
+          type: { state, completed: done, detail: m.fixture.status.long },
+          displayClock: m.fixture.status.elapsed ? `${m.fixture.status.elapsed}'` : ""
+        },
+        competitions: [{
+          competitors: [
+            { homeAway: "home", score: m.goals.home, team: { displayName: m.teams.home.name, logo: m.teams.home.logo } },
+            { homeAway: "away", score: m.goals.away, team: { displayName: m.teams.away.name, logo: m.teams.away.logo } }
+          ]
+        }]
+      };
+    });
+  } catch (err) {
+    return [];
   }
 }
 
@@ -680,15 +711,15 @@ function showSource({useFD, fd, espnCount}) {
   let text;
   if (!FD_ENABLED) {
     cls = "warn";
-    text = "Fonte: ESPN / FighterAPI";
+    text = "Fonte: API-Football / ESPN / FighterAPI";
   } else if (!useFD) {
-    text = "Fonte: ESPN / FighterAPI";
+    text = "Fonte: API-Football / ESPN / FighterAPI";
   } else if (fd.ok) {
     cls = "ok";
-    text = espnCount ? "Fonte: football-data.org + ESPN + FighterAPI" : "Fonte: football-data.org";
+    text = espnCount ? "Fonte: football-data.org + API-Football + ESPN" : "Fonte: football-data.org";
   } else {
     cls = "warn";
-    text = `football-data.org indisponível (${fdReason(fd.error)}) · usando a ESPN / FighterAPI`;
+    text = `football-data.org indisponível (${fdReason(fd.error)}) · usando API-Football / ESPN`;
   }
   sourceInfo.className = "source " + cls;
   sourceInfo.textContent = text;
@@ -1093,7 +1124,7 @@ const PT_RULES = [
   [/to the bottom right corner/g, "no canto inferior direito"],
   [/to the top left corner/g, "no canto superior esquerdo"],
   [/to the top right corner/g, "no canto superior direito"],
-  [/to the high centre of the goal/g, "no alto do gol, ao centro"],
+  [/to the high centre of_goal/g, "no alto do gol, ao centro"],
   [/is high and wide to the left/g, "passa por cima e para fora, à esquerda"],
   [/is high and wide to the right/g, "passa por cima e para fora, à direita"],
   [/is high and wide/g, "passa por cima e para fora"],

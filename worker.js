@@ -1,4 +1,4 @@
-// Servidor intermediário (Cloudflare Worker) para football-data.org e FighterAPI
+// ===== Configurações da API =====
 const memory = new Map();      
 const upstreamCalls = [];      
 let blockedUntil = 0;          
@@ -10,7 +10,8 @@ const MAX_ENTRIES = 300;
 function ttlSeconds(pathname) {
   if (/^\/v4\/competitions\/[^/]+\/matches/.test(pathname)) return 900;
   if (pathname === "/v4/matches") return 15;
-  if (pathname.startsWith("/fighterapi/")) return 300; // Cache de 5 min para FighterAPI
+  if (pathname.startsWith("/fighterapi/")) return 300; 
+  if (pathname.startsWith("/apifootball/")) return 60; // Cache de 1 min para API-Football
   return 120;
 }
 
@@ -30,6 +31,36 @@ export default {
     const url = new URL(request.url);
     const ttl = ttlSeconds(url.pathname);
     const now = Date.now();
+
+    // ===== Rota para API-Football =====
+    if (url.pathname.startsWith("/apifootball/")) {
+      const targetPath = url.pathname.replace("/apifootball", "");
+      const targetUrl = "https://v3.football.api-sports.io" + targetPath + url.search;
+      
+      // Coloque sua chave da API-Football nas Variáveis de Ambiente da Cloudflare como `API_FOOTBALL_KEY`
+      // ou substitua a string abaixo se preferir hardcodar diretamente:
+      const apiKey = env.API_FOOTBALL_KEY || "SUA_CHAVE_API_FOOTBALL_AQUI";
+
+      try {
+        const response = await fetch(targetUrl, {
+          method: request.method,
+          headers: {
+            "x-apisports-key": apiKey
+          }
+        });
+
+        const data = await response.text();
+        return new Response(data, {
+          status: response.status,
+          headers: {...cors, "Content-Type": "application/json"}
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({error: "Erro ao conectar à API-Football"}), {
+          status: 502,
+          headers: {...cors, "Content-Type": "application/json"}
+        });
+      }
+    }
 
     // Endpoints do FighterAPI via proxy
     if (url.pathname.startsWith("/fighterapi/")) {
