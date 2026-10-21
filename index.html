@@ -95,6 +95,15 @@ h2{font-size:20px;margin:0}
   cursor:pointer;font:inherit;font-weight:800;
 }
 .more:hover{border-color:var(--green);color:var(--green)}
+.source{
+  display:inline-flex;align-items:center;gap:7px;margin:0 0 10px;padding:6px 12px;
+  border-radius:999px;font-size:12px;font-weight:700;
+  border:1px solid var(--line);background:var(--panel);color:var(--muted);
+}
+.source:empty{display:none}
+.source::before{content:"●";font-size:10px}
+.source.ok{color:var(--green);border-color:#42e69a55;background:#42e69a14}
+.source.warn{color:var(--yellow);border-color:#ffd54a55;background:#ffd54a14}
 .empty,.loading{
   grid-column:1/-1;text-align:center;padding:35px;
   border:1px dashed var(--line);border-radius:14px;color:var(--muted);
@@ -133,6 +142,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
     <h2 id="sectionTitle">Jogos e horários</h2>
     <button class="filter" id="refresh">↻ Atualizar</button>
   </div>
+  <div class="source info" id="sourceInfo"></div>
   <div class="muted" id="updated">Horários exibidos no fuso do seu dispositivo.</div>
 
   <section class="grid" id="games" aria-live="polite">
@@ -205,6 +215,7 @@ let polling = false;
 
 const games = document.getElementById("games");
 const updated = document.getElementById("updated");
+const sourceInfo = document.getElementById("sourceInfo");
 const filtersEl = document.getElementById("filters");
 
 function esc(value) {
@@ -478,6 +489,35 @@ async function fetchFootballDataSeason(code) {
   return list;
 }
 
+/* ---------- Aviso da fonte de dados ---------- */
+function fdReason(error) {
+  if (!error) return "erro desconhecido";
+  if (error.status === 401 || error.status === 403) return `chave recusada, erro ${error.status}`;
+  if (error.status === 429) return "limite de consultas atingido, erro 429";
+  if (error.status) return `erro ${error.status}`;
+  if (error.name === "AbortError") return "demorou demais para responder";
+  return "bloqueada pelo navegador ou sem conexão";
+}
+
+function showSource({useFD, fd, espnCount}) {
+  let cls = "info";
+  let text;
+  if (!FOOTBALL_DATA_KEY) {
+    cls = "warn";
+    text = "Fonte: ESPN (sem chave da football-data.org)";
+  } else if (!useFD) {
+    text = "Fonte: ESPN";
+  } else if (fd.ok) {
+    cls = "ok";
+    text = espnCount ? "Fonte: football-data.org + ESPN" : "Fonte: football-data.org";
+  } else {
+    cls = "warn";
+    text = `football-data.org indisponível (${fdReason(fd.error)}) · usando a ESPN`;
+  }
+  sourceInfo.className = "source " + cls;
+  sourceInfo.textContent = text;
+}
+
 /* ---------- Ordenação ---------- */
 // Ao vivo primeiro, depois os próximos jogos (do mais perto ao mais longe)
 // e por último os encerrados (do mais recente ao mais antigo).
@@ -540,7 +580,7 @@ async function loadGames(silent = false) {
   const past = wide ? 300 : PAST_DAYS;
   const future = wide ? 300 : FUTURE_DAYS;
   const fdPromise = useFD
-    ? (wide ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), () => ({ok:false, list:[]}))
+    ? (wide ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
     : Promise.resolve({ok:false, list:[]});
   const espnIds = ids.filter(id => !(useFD && FD_CODES[id]));
   const espnPromise = Promise.allSettled(espnIds.map(id => fetchEspn(id, past, future)));
@@ -577,13 +617,13 @@ async function loadGames(silent = false) {
   }
 
   matches = sortMatches(all);
+  showSource({useFD, fd, espnCount: all.filter(e => e.source === "espn").length});
   lastFailures = failures;
   lastTotal = total;
   render();
 
   updated.textContent = "Última consulta: " +
     new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) +
-    (useFD && fd.ok ? " · Fontes: football-data.org e ESPN" : "") +
     " · Horários locais do dispositivo.";
 }
 
