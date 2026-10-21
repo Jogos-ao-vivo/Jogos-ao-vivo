@@ -106,6 +106,7 @@ h2{font-size:20px;margin:0}
 .source::before{content:"●";font-size:10px}
 .source.ok{color:var(--green);border-color:#42e69a55;background:#42e69a14}
 .source.warn{color:var(--yellow);border-color:#ffd54a55;background:#ffd54a14}
+.source.error{color:var(--red);border-color:#ff646e55;background:#ff646e14}
 .empty,.loading{
   grid-column:1/-1;text-align:center;padding:35px;
   border:1px dashed var(--line);border-radius:14px;color:var(--muted);
@@ -248,7 +249,7 @@ button.btn.details{border:1px solid var(--line)}
     <h2 id="sectionTitle">Eventos e horários</h2>
     <button class="filter" id="refresh">↻ Atualizar</button>
   </div>
-  <div class="source info" id="sourceInfo"></div>
+  <div class="source info" id="sourceInfo">Testando status das APIs...</div>
   <div class="muted" id="updated">Horários exibidos no fuso do seu dispositivo.</div>
 
   <section class="grid" id="games" aria-live="polite">
@@ -448,7 +449,7 @@ function card(event, leagueName) {
 
   const homeName = h.displayName || h.name || "Time 1";
   const awayName = a.displayName || a.name || "Time 2";
-  const watchURL = searchWatch(homeName, awayName, leagueName);
+  const watchURL = searchWatch();
 
   return `<article class="match" data-key="${esc(cardKey(event))}" data-score="${esc(scoreKey)}">
     <div class="match-top">
@@ -490,6 +491,26 @@ function updateCard(event) {
       scoreEl.classList.add("goal");
       setTimeout(() => scoreEl.classList.remove("goal"), 5000);
     }
+  }
+}
+
+/* ---------- Validação e Status ---------- */
+async function checkApiFootballStatus() {
+  try {
+    const response = await fetch(`${FD_PROXY}/apifootball/v3/status`, {signal: AbortSignal.timeout(6000)});
+    if (response.ok) {
+      const data = await response.json();
+      const requestsUsed = data.requests?.current || 0;
+      const requestsLimit = data.requests?.limit_day || 100;
+      sourceInfo.className = "source ok";
+      sourceInfo.textContent = `● API-Football: Conectada (${requestsUsed}/${requestsLimit} requisições hoje) · ESPN/FD ativos`;
+    } else {
+      sourceInfo.className = "source error";
+      sourceInfo.textContent = `● API-Football: Erro HTTP ${response.status} (Chave inválida ou limite excedido)`;
+    }
+  } catch (err) {
+    sourceInfo.className = "source warn";
+    sourceInfo.textContent = `● API-Football: Falha na conexão ou bloqueada · Usando secundárias`;
   }
 }
 
@@ -696,83 +717,6 @@ async function fetchFootballDataSeason(code) {
   return list;
 }
 
-/* ---------- Aviso da fonte de dados ---------- */
-function fdReason(error) {
-  if (!error) return "erro desconhecido";
-  if (error.status === 401 || error.status === 403) return `chave recusada, erro ${error.status}`;
-  if (error.status === 429) return "limite de consultas atingido, erro 429";
-  if (error.status) return `erro ${error.status}`;
-  if (error.name === "AbortError") return "demorou demais para responder";
-  return FD_PROXY ? "Worker sem resposta ou sem conexão" : "bloqueada pelo navegador (CORS) ou sem conexão";
-}
-
-function showSource({useFD, fd, espnCount}) {
-  let cls = "info";
-  let text;
-  if (!FD_ENABLED) {
-    cls = "warn";
-    text = "Fonte: API-Football / ESPN / FighterAPI";
-  } else if (!useFD) {
-    text = "Fonte: API-Football / ESPN / FighterAPI";
-  } else if (fd.ok) {
-    cls = "ok";
-    text = espnCount ? "Fonte: football-data.org + API-Football + ESPN" : "Fonte: football-data.org";
-  } else {
-    cls = "warn";
-    text = `football-data.org indisponível (${fdReason(fd.error)}) · usando API-Football / ESPN`;
-  }
-  sourceInfo.className = "source " + cls;
-  sourceInfo.textContent = text;
-}
-
-/* ---------- Placar mais rápido ---------- */
-const norm = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-  .toLowerCase().replace(/[^a-z0-9]/g, "");
-const similar = (a, b) => a && b && (a.includes(b) || b.includes(a) || a.slice(0, 4) === b.slice(0, 4));
-
-function competitorsOf(event) {
-  const c = event.competitions?.[0]?.competitors || [];
-  const home = c.find(x => x.homeAway === "home") || c[0] || {};
-  const away = c.find(x => x.homeAway === "away") || c[1] || {};
-  return {home, away};
-}
-
-function sameGame(a, b) {
-  if (a.leagueId !== b.leagueId) return false;
-  const da = new Date(a.date).getTime(), db = new Date(b.date).getTime();
-  if (Number.isNaN(da) || Number.isNaN(db) || Math.abs(da - db) > 6 * 3600000) return false;
-  const x = competitorsOf(a), y = competitorsOf(b);
-  const name = c => norm(c.team?.displayName || c.team?.name);
-  return similar(name(x.home), name(y.home)) && similar(name(x.away), name(y.away));
-}
-
-function mergeOverlay(fdEvent, espnEvent) {
-  const e = competitorsOf(espnEvent);
-  const hasScore = e.home.score != null && e.away.score != null;
-  return {
-    ...fdEvent,
-    status: espnEvent.status,
-    competitions: [{
-      competitors: fdEvent.competitions[0].competitors.map(c => ({
-        ...c,
-        score: hasScore ? (c.homeAway === "home" ? e.home.score : e.away.score) : null
-      }))
-    }]
-  };
-}
-
-function applyOverlay(event) {
-  const key = cardKey(event);
-  const o = overlays[key];
-  if (!o) return event;
-  const ended = o.espn.status?.type?.state === "post";
-  if (Date.now() - o.time > (ended ? OVERLAY_END_MS : OVERLAY_MS)) {
-    delete overlays[key];
-    return event;
-  }
-  return mergeOverlay(event, o.espn);
-}
-
 /* ---------- Ordenação ---------- */
 function rank(event) {
   const t = event.status?.type;
@@ -805,9 +749,6 @@ function render() {
     ).join("");
     if (matches.length > visibleCount) {
       html += `<button class="more" id="more">Ver mais eventos (${matches.length - visibleCount})</button>`;
-    }
-    if (lastFailures) {
-      html += `<div class="empty">Algumas fontes não responderam à consulta. Os eventos disponíveis estão exibidos acima.</div>`;
     }
   }
   if (html === lastHTML) return;
@@ -861,13 +802,8 @@ async function loadGames(silent = false) {
   }
   const all = Array.from(unique.values()).map(e => e.source === "fd" ? applyOverlay(e) : e);
 
-  if (!all.length && total > 0 && failures === total && matches.length && silent) {
-    updated.textContent = "Não foi possível atualizar agora. Mostrando a última consulta com sucesso.";
-    return;
-  }
-
   matches = sortMatches(all);
-  showSource({useFD, fd, espnCount: all.filter(e => e.source === "espn").length});
+  checkApiFootballStatus();
   lastFailures = failures;
   lastTotal = total;
   render();
@@ -896,7 +832,7 @@ games.addEventListener("click", event => {
 
 document.getElementById("refresh").addEventListener("click", () => loadGames());
 
-/* ---------- Tempo real ---------- */
+/* ---------- Tempo real e Loops ---------- */
 async function pollLive() {
   if (polling || document.hidden) return true;
   const now = Date.now();
@@ -913,7 +849,6 @@ async function pollLive() {
   polling = true;
   const token = requestNumber;
   let ok = true;
-  let needsFullReload = false;
   try {
     const results = await Promise.allSettled(liveLeagues.map(id => fetchEspn(id, 1, 0)));
     if (token !== requestNumber) return true;   
@@ -921,30 +856,15 @@ async function pollLive() {
       if (result.status !== "fulfilled") { ok = false; return; }
       result.value.forEach(fresh => {
         let index = matches.findIndex(m => cardKey(m) === cardKey(fresh));
-        if (index >= 0) {                            
-          if (rank(matches[index]) !== rank(fresh)) needsFullReload = true; 
+        if (index >= 0) {
           matches[index] = fresh;
           updateCard(fresh);
-          return;
         }
-        if (fresh.status?.type?.state === "pre") return;
-        index = matches.findIndex(m => m.source === "fd" && sameGame(m, fresh));
-        if (index < 0) return;
-        overlays[cardKey(matches[index])] = {espn: fresh, time: Date.now()};
-        const merged = mergeOverlay(matches[index], fresh);
-        if (rank(matches[index]) !== rank(merged)) needsFullReload = true;
-        matches[index] = merged;
-        updateCard(merged);
       });
     });
-    if (ok) {
-      updated.textContent = "Tempo real · atualizado às " +
-        new Date().toLocaleTimeString("pt-BR") + " · Horários locais do dispositivo.";
-    }
   } finally {
     polling = false;
   }
-  if (needsFullReload) loadGames(true);
   return ok;
 }
 
@@ -953,47 +873,7 @@ async function liveLoop() {
   setTimeout(liveLoop, ok ? LIVE_POLL_MS : 5000);   
 }
 
-async function pollLiveFD() {
-  if (!FD_ENABLED || document.hidden) return true;
-  if (!matches.some(e => e.source === "fd" && e.status?.type?.state === "in")) return true;
-
-  const token = requestNumber;
-  let reload = false;
-  try {
-    const fresh = await fetchFootballData(1, 1);
-    if (token !== requestNumber) return true;
-    fresh.map(applyOverlay).forEach(f => {
-      const index = matches.findIndex(m => cardKey(m) === cardKey(f));
-      if (index < 0) return;
-      if (rank(matches[index]) !== rank(f)) reload = true;
-      matches[index] = f;
-      updateCard(f);
-    });
-  } catch (error) {
-    return false;
-  }
-  if (reload) loadGames(true);
-  return true;
-}
-
-async function fdLoop() {
-  const ok = await pollLiveFD();
-  setTimeout(fdLoop, ok ? FD_POLL_MS : 30000);
-}
-
-/* ---------- Onde assistir ---------- */
-const IS_ANDROID = /Android/i.test(navigator.userAgent || "");
-
-games.addEventListener("click", event => {
-  const link = event.target.closest("a.watch");
-  if (!link || !IS_ANDROID) return;      
-  event.preventDefault();
-  window.location.href = "intent://#Intent;action=android.intent.action.MAIN;" +
-    "category=android.intent.category.LAUNCHER;" +
-    `package=${FUTENIUM_PACKAGE};S.browser_fallback_url=${encodeURIComponent(link.href)};end`;
-});
-
-/* ---------- Detalhes do evento ---------- */
+/* ---------- Detalhes do evento (Tradução e Nomes Certos) ---------- */
 const STAT_NAMES = {
   possessionPct:"Posse de bola", totalShots:"Finalizações", shotsOnTarget:"Finalizações no gol",
   blockedShots:"Finalizações bloqueadas", wonCorners:"Escanteios", foulsCommitted:"Faltas",
@@ -1038,7 +918,6 @@ function eventLabel(text) {
   if (t.includes("penalty") && t.includes("scored")) return "Gol de pênalti";
   if (t.includes("penalty") && t.includes("saved")) return "Pênalti defendido";
   if (t.includes("penalty") && (t.includes("missed") || t.includes("miss"))) return "Pênalti perdido";
-  if (t.includes("penalty") && t.includes("goal")) return "Gol de pênalti";
   if (t.includes("goal") && t.includes("free")) return "Gol de falta";
   if (t.includes("goal") && t.includes("header")) return "Gol de cabeça";
   if (t.includes("goal")) return "Gol";
@@ -1050,11 +929,6 @@ function eventLabel(text) {
   if (/start (2nd|second) half/.test(t)) return "Início do 2º tempo";
   if (t.includes("halftime") || t.includes("half time")) return "Intervalo";
   if (t.includes("end regular time") || t.includes("full time") || t.includes("end of match")) return "Fim do tempo normal";
-  if (/end (1st|first) half/.test(t)) return "Fim do 1º tempo";
-  if (/end (2nd|second) half/.test(t)) return "Fim do 2º tempo";
-  if (t.includes("extra time") || t.includes("overtime")) return "Prorrogação";
-  if (t.includes("shootout")) return "Disputa de pênaltis";
-  if (t.includes("var")) return "VAR";
   return text || "";
 }
 
@@ -1069,77 +943,15 @@ const PT_RULES = [
   [/First Half ends,/g, "Fim do primeiro tempo,"],
   [/Second Half ends,/g, "Fim do segundo tempo,"],
   [/Match ends,/g, "Fim de jogo,"],
-  [/Extra time begins/gi, "Começa a prorrogação"],
-  [/Penalty Shootout ends,/gi, "Fim da disputa de pênaltis,"],
   [/Foul by (.+?) \((.+?)\)\./g, "Falta de $1 ($2)."],
-  [/Hand ball by (.+?) \((.+?)\)( .*?)?\./g, "Mão na bola de $1 ($2)."],
-  [/(.+?) \((.+?)\) wins a free kick in the defensive half\./g, "$1 ($2) sofre falta no campo de defesa."],
-  [/(.+?) \((.+?)\) wins a free kick in the attacking half\./g, "$1 ($2) sofre falta no campo de ataque."],
-  [/(.+?) \((.+?)\) wins a free kick on the right wing\./g, "$1 ($2) sofre falta na ponta direita."],
-  [/(.+?) \((.+?)\) wins a free kick on the left wing\./g, "$1 ($2) sofre falta na ponta esquerda."],
   [/(.+?) \((.+?)\) wins a free kick/g, "$1 ($2) sofre falta"],
   [/(.+?) \((.+?)\) wins a corner kick\./g, "$1 ($2) ganha um escanteio."],
-  [/Corner, (.+?)\. Conceded by (.+?)\./g, "Escanteio, $1. Cedido por $2."],
-  [/Offside, (.+?)\. (.+?) tries a through ball, but (.+?) is caught offside\./g, "Impedimento, $1. $2 tenta um passe em profundidade, mas $3 está impedido."],
-  [/Offside, (.+?)\. (.+?) is caught offside\./g, "Impedimento, $1. $2 está impedido."],
-  [/Offside, /g, "Impedimento, "],
-  [/Delay in match (.+?) \((.+?)\) because of an injury\./g, "Jogo parado: $1 ($2) está com lesão."],
-  [/Delay over\. (.+?) are ready to continue\./g, "Jogo reiniciado. $1 está pronto para continuar."],
-  [/Delay in match/g, "Jogo parado"],
-  [/(.+?) \((.+?)\) is shown the yellow card for (a bad foul|a rough tackle|unsporting behaviou?r|dissent|time wasting|a foul|persistent fouling)\./g,
-    (m, p, t, why) => `${p} (${t}) recebe cartão amarelo por ` + ({
-      "a bad foul":"falta dura", "a rough tackle":"entrada dura", "dissent":"reclamação",
-      "time wasting":"cera", "a foul":"falta", "persistent fouling":"faltas repetidas"
-    }[why] || "conduta antidesportiva") + "."],
-  [/(.+?) \((.+?)\) is shown the red card/g, "$1 ($2) recebe cartão vermelho"],
+  [/Offside, (.+?)\./g, "Impedimento, $1."],
   [/(.+?) \((.+?)\) is shown the yellow card/g, "$1 ($2) recebe cartão amarelo"],
+  [/(.+?) \((.+?)\) is shown the red card/g, "$1 ($2) recebe cartão vermelho"],
   [/Attempt missed\./g, "Finalização para fora."],
   [/Attempt saved\./g, "Finalização defendida."],
-  [/Attempt blocked\./g, "Finalização bloqueada."],
-  [/Attempt (?=[A-Z])/g, "Finalização de "],
-  [/hits the (left|right) post/g, (m, s) => "bate na trave " + (s === "left" ? "esquerda" : "direita")],
-  [/hits the bar/g, "bate no travessão"],
-  [/converts the penalty/g, "converte o pênalti"],
-  [/right footed shot/g, "chute de pé direito"],
-  [/left footed shot/g, "chute de pé esquerdo"],
-  [/header/g, "cabeceio"],
-  [/with an attempt on goal/g, "finaliza ao gol"],
-  [/from the centre of the box/g, "do centro da área"],
-  [/from the right side of the box/g, "do lado direito da área"],
-  [/from the left side of the box/g, "do lado esquerdo da área"],
-  [/from very close range/g, "de muito perto"],
-  [/from outside the box/g, "de fora da área"],
-  [/from a difficult angle on the right/g, "de ângulo difícil pela direita"],
-  [/from a difficult angle on the left/g, "de ângulo difícil pela esquerda"],
-  [/from the right wing/g, "pela ponta direita"],
-  [/from the left wing/g, "pela ponta esquerda"],
-  [/from long range on the right/g, "de longe pela direita"],
-  [/from long range on the left/g, "de longe pela esquerda"],
-  [/from long range/g, "de longe"],
-  [/from a free kick/g, "de falta"],
-  [/from a direct free kick/g, "de falta direta"],
-  [/from the penalty spot/g, "da marca do pênalti"],
-  [/to the centre of the goal/g, "no meio do gol"],
-  [/to the bottom left corner/g, "no canto inferior esquerdo"],
-  [/to the bottom right corner/g, "no canto inferior direito"],
-  [/to the top left corner/g, "no canto superior esquerdo"],
-  [/to the top right corner/g, "no canto superior direito"],
-  [/to the high centre of_goal/g, "no alto do gol, ao centro"],
-  [/is high and wide to the left/g, "passa por cima e para fora, à esquerda"],
-  [/is high and wide to the right/g, "passa por cima e para fora, à direita"],
-  [/is high and wide/g, "passa por cima e para fora"],
-  [/is close, but misses to the left/g, "passa perto, à esquerda"],
-  [/is close, but misses to the right/g, "passa perto, à direita"],
-  [/is close, but misses/g, "passa perto"],
-  [/is too high/g, "passa por cima do gol"],
-  [/misses to the left/g, "passa à esquerda"],
-  [/misses to the right/g, "passa à direita"],
-  [/Assisted by (.+?)( with .*?)?\./g, "Assistência de $1."],
-  [/following a corner/g, "após escanteio"],
-  [/following a set piece situation/g, "após bola parada"],
-  [/following a fast break/g, "em contra-ataque"],
-  [/Conceded by/g, "Cedido por"],
-  [/\bsaved\b/g, "defendido"]
+  [/Attempt blocked\./g, "Finalização bloqueada."]
 ];
 
 function translateText(text) {
@@ -1292,13 +1104,9 @@ function sideOf(p) {
   return 0;
 }
 
-function shortName(name) {
-  const parts = String(name || "").trim().split(/\s+/);
-  if (parts.length <= 1) return parts[0] || "";
-  const prefixes = ["de", "da", "do", "dos", "das", "van", "von", "di", "del", "le", "la", "el", "al", "ter", "ten"];
-  const last = parts[parts.length - 1];
-  const before = parts[parts.length - 2];
-  return prefixes.includes(before.toLowerCase()) ? before + " " + last : last;
+function playerName(athlete) {
+  if (!athlete) return "Jogador";
+  return athlete.displayName || athlete.fullName || athlete.shortName || athlete.name || "Jogador";
 }
 
 function pitchRows(r, starters) {
@@ -1324,10 +1132,6 @@ function pitchRows(r, starters) {
     counts = (d && m && f > 0) ? [d, m, f] : [Math.ceil(field.length * 0.4), Math.ceil(field.length * 0.4), 0];
     counts[2] = field.length - counts[0] - counts[1];
     counts = counts.filter(n => n > 0);
-    if (validFormation === false && (d && m && f > 0)) {
-      const rank = {G:0, D:1, M:2, F:3, "":2};
-      field.sort((a, b) => rank[roleOf(a)] - rank[roleOf(b)]);
-    }
   }
 
   const rows = [];
@@ -1352,9 +1156,9 @@ function pitchPlayers(r, isHome, startIndex) {
     const left = isHome ? 100 - x : x;
     const top = isHome ? y : 100 - y;
     const num = p.jersey || p.athlete?.jersey || "";
-    const full = p.athlete?.displayName || p.athlete?.fullName || "Jogador";
+    const full = playerName(p.athlete);
     out.push(`<div class="pp ${isHome ? "h" : "a"}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%;animation-delay:${(index * 0.07).toFixed(2)}s" title="${esc(full)}">
-      <span class="dot">${esc(num)}</span><span class="nm">${esc(shortName(full))}</span></div>`);
+      <span class="dot">${esc(num)}</span><span class="nm">${esc(full)}</span></div>`);
     index++;
   };
 
@@ -1385,7 +1189,7 @@ function lineupsHTML(data) {
   }
   const player = p => `<div class="pl">
       <span class="n">${esc(p.jersey || p.athlete?.jersey || "")}</span>
-      <span class="nm">${esc(p.athlete?.displayName || p.athlete?.fullName || "Jogador")}</span>
+      <span class="nm">${esc(playerName(p.athlete))}</span>
       <span class="pos">${esc(positionLabel(p.position?.abbreviation))}</span>
     </div>`;
 
@@ -1444,14 +1248,11 @@ function countSubs(data, homeTeam, awayTeam) {
     add(k.team?.id, k.team?.displayName || nameFromText(k.text));
   });
 
-  if (!h && !a) {      
-    (data.commentary || []).forEach(c => {
-      const team = nameFromText(c.text);
-      if (team) add(null, team);
-    });
-  }
   return {h, a};
 }
+
+const norm = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const similar = (a, b) => a && b && (a.includes(b) || b.includes(a) || a.slice(0, 4) === b.slice(0, 4));
 
 function statsHTML(data) {
   const teams = data.boxscore?.teams || [];
@@ -1579,12 +1380,8 @@ document.addEventListener("keydown", event => {
 
 renderFilters();
 loadGames();
-fdLoop();
-setInterval(() => loadGames(true), FULL_REFRESH_MS);
 liveLoop();
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) { loadGames(true); }
-});
+setInterval(() => loadGames(true), FULL_REFRESH_MS);
 </script>
 </body>
 </html>
