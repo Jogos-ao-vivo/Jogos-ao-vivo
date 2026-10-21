@@ -164,6 +164,14 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offs
 // Sem a chave, o site usa só a ESPN, como antes.
 const FOOTBALL_DATA_KEY = "ab9b41f948234746983950dcb52a9b79";
 
+// Se o navegador bloquear a football-data.org, use um servidor intermediário (Cloudflare Worker):
+// cole aqui o endereço do seu Worker, por exemplo "https://futplay-api.seunome.workers.dev".
+// Com o Worker, a chave fica guardada no servidor e pode ser apagada daqui.
+const FD_PROXY = "";
+const FD_BASE = FD_PROXY ? FD_PROXY.replace(/\/+$/, "") : "https://api.football-data.org";
+const FD_ENABLED = Boolean(FD_PROXY || FOOTBALL_DATA_KEY);
+const fdHeaders = () => FD_PROXY ? {} : {"X-Auth-Token": FOOTBALL_DATA_KEY};
+
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 const PAST_DAYS = 2;     // quantos dias para trás buscar
 const FUTURE_DAYS = 7;   // quantos dias para frente buscar
@@ -465,9 +473,9 @@ async function fetchFootballData(past = PAST_DAYS, future = FUTURE_DAYS) {
   const key = `${past}-${future}`;
   if (fdCache.key === key && Date.now() - fdCache.time < 8000) return fdCache.data;
   const codes = Object.values(FD_CODES).join(",");
-  const url = "https://api.football-data.org/v4/matches" +
+  const url = `${FD_BASE}/v4/matches` +
     `?dateFrom=${ymd(dayOffset(-past), "-")}&dateTo=${ymd(dayOffset(future), "-")}&competitions=${codes}`;
-  const data = await getJSON(url, 15000, {"X-Auth-Token": FOOTBALL_DATA_KEY});
+  const data = await getJSON(url, 15000, fdHeaders());
   const list = (data.matches || []).map(normalizeFD).filter(Boolean);
   fdCache = {key, time: Date.now(), data: list};
   return list;
@@ -480,9 +488,9 @@ async function fetchFootballDataSeason(code) {
   const cached = fdSeasonCache[code];
   if (cached && Date.now() - cached.time < 20000) return cached.data;
   const data = await getJSON(
-    `https://api.football-data.org/v4/competitions/${code}/matches`,
+    `${FD_BASE}/v4/competitions/${code}/matches`,
     20000,
-    {"X-Auth-Token": FOOTBALL_DATA_KEY}
+    fdHeaders()
   );
   const list = (data.matches || []).map(m => normalizeFD(m, code)).filter(Boolean);
   fdSeasonCache[code] = {time: Date.now(), data: list};
@@ -496,13 +504,13 @@ function fdReason(error) {
   if (error.status === 429) return "limite de consultas atingido, erro 429";
   if (error.status) return `erro ${error.status}`;
   if (error.name === "AbortError") return "demorou demais para responder";
-  return "bloqueada pelo navegador ou sem conexão";
+  return FD_PROXY ? "Worker sem resposta ou sem conexão" : "bloqueada pelo navegador (CORS) ou sem conexão";
 }
 
 function showSource({useFD, fd, espnCount}) {
   let cls = "info";
   let text;
-  if (!FOOTBALL_DATA_KEY) {
+  if (!FD_ENABLED) {
     cls = "warn";
     text = "Fonte: ESPN (sem chave da football-data.org)";
   } else if (!useFD) {
@@ -573,7 +581,7 @@ async function loadGames(silent = false) {
   }
 
   const ids = selected === "all" ? Object.keys(leagues) : [selected];
-  const useFD = Boolean(FOOTBALL_DATA_KEY) && ids.some(id => FD_CODES[id]);
+  const useFD = FD_ENABLED && ids.some(id => FD_CODES[id]);
 
   // football-data.org para as ligas dela; ESPN para as demais
   const wide = selected !== "all";               // liga escolhida: calendário inteiro
@@ -691,7 +699,7 @@ async function liveLoop() {
 
 // Jogos da football-data.org: uma única consulta a cada 10 s (limite do plano grátis)
 async function pollLiveFD() {
-  if (!FOOTBALL_DATA_KEY || document.hidden) return true;
+  if (!FD_ENABLED || document.hidden) return true;
   if (!matches.some(e => e.source === "fd" && e.status?.type?.state === "in")) return true;
 
   const token = requestNumber;
