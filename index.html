@@ -922,8 +922,8 @@ function matchesQuery(event, query) {
   return variants.some(v => v.split(" ").every(t => event._hay.includes(t)));
 }
 
-// Calendário completo (temporada inteira) de todas as competições, pela ESPN (sem limite de consultas
-// da football-data); fica guardado por 10 min
+// Calendário completo (passado e futuro) de todas as competições, pela ESPN (sem limite de consultas);
+// depois, para as ligas do time pesquisado, a football-data completa os jogos futuros. Guardado por 10 min
 function loadFullCalendar() {
   if (fullCache.list.length && Date.now() - fullCache.time < SEARCH_CACHE_MS) return Promise.resolve(fullCache);
   if (fullCache.promise) return fullCache.promise;
@@ -932,8 +932,10 @@ function loadFullCalendar() {
     const fdLeagues = new Set();
     let failures = 0;
     const results = await Promise.all(ids.map(async id => {
-      try { return await fetchEspn(id, 300, 300); }
-      catch (error) { failures++; return []; }
+      const parts = await Promise.allSettled([fetchEspn(id, 300, 0), fetchEspn(id, 0, 300)]);
+      const good = parts.filter(r => r.status === "fulfilled");
+      if (!good.length) { failures++; return []; }
+      return good.flatMap(r => r.value);
     }));
     const unique = new Map();
     results.flat().forEach(event => unique.set(cardKey(event), event));
@@ -950,18 +952,37 @@ function loadFullCalendar() {
 // Atualiza placares e horários só das competições que aparecem no resultado
 async function refreshSearchLeagues(ids) {
   const cache = fullCache;
-  const tasks = ids.map(id => fetchEspn(id, PAST_DAYS, FUTURE_DAYS));
+  const tasks = ids.filter(id => !cache.fdLeagues.has(id)).map(id => fetchEspn(id, PAST_DAYS, FUTURE_DAYS));
+  if (ids.some(id => cache.fdLeagues.has(id))) tasks.push(fetchFootballData());
   const results = await Promise.allSettled(tasks);
   const map = new Map(cache.list.map(e => [cardKey(e), e]));
   results.forEach(r => {
     if (r.status !== "fulfilled") return;
     r.value.forEach(e => {
       if (!ids.includes(e.leagueId)) return;
+      if (e.source === "fd" && !cache.fdLeagues.has(e.leagueId)) return;
       map.set(cardKey(e), e);
     });
   });
   cache.list = Array.from(map.values());
   cache.overlay = Date.now();
+}
+
+// Para as ligas em que o time aparece e que a football-data cobre, troca os dados pela temporada
+// completa dela (traz todos os jogos que ainda vão acontecer). Poucas consultas, e ficam guardadas.
+async function upgradeSearchWithFD(ids) {
+  if (!FD_ENABLED) return;
+  const cache = fullCache;
+  const todo = ids.filter(id => FD_CODES[id] && !cache.fdLeagues.has(id));
+  if (!todo.length) return;
+  const results = await Promise.allSettled(todo.map(id => fetchFootballDataSeason(FD_CODES[id])));
+  results.forEach((r, i) => {
+    if (r.status !== "fulfilled") return;
+    const id = todo[i];
+    cache.list = cache.list.filter(e => !(e.leagueId === id && e.source === "espn"));
+    r.value.filter(e => e.leagueId === id).forEach(e => cache.list.push(e));
+    cache.fdLeagues.add(id);
+  });
 }
 
 async function loadSearch() {
@@ -976,6 +997,10 @@ async function loadSearch() {
   }
 
   await loadFullCalendar();
+  if (myRequest !== requestNumber) return;
+
+  const teamLeagues = [...new Set(fullCache.list.filter(e => matchesQuery(e, query)).map(e => e.leagueId))];
+  await upgradeSearchWithFD(teamLeagues);
   if (myRequest !== requestNumber) return;
 
   const find = () => sortMatches(fullCache.list.filter(e => matchesQuery(e, query)));
