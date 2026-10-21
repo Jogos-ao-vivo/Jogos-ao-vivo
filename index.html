@@ -299,7 +299,6 @@ const fdHeaders = () => FD_PROXY ? {} : {"X-Auth-Token": FOOTBALL_DATA_KEY};
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 
 // "Onde assistir": abre o app Futenium 2026 na Play Store (no Android o app da loja mostra "Abrir").
-// Deixe vazio para voltar à busca "onde assistir" do Google.
 const FUTENIUM_PACKAGE = "com.futteniiumm26.app";
 const PAST_DAYS = 2;     // quantos dias para trás buscar
 const FUTURE_DAYS = 7;   // quantos dias para frente buscar
@@ -430,10 +429,8 @@ function teamHTML(team) {
   return `<div class="team">${logo}<div class="team-name">${esc(team.name)}</div></div>`;
 }
 
-function searchWatch(home, away, league) {
-  if (FUTENIUM_PACKAGE) return `https://play.google.com/store/apps/details?id=${FUTENIUM_PACKAGE}`;
-  const q = `onde assistir oficialmente ${home} x ${away} ${league} Brasil`;
-  return "https://www.google.com/search?q=" + encodeURIComponent(q);
+function searchWatch() {
+  return `https://play.google.com/store/apps/details?id=${FUTENIUM_PACKAGE}`;
 }
 
 function dynamicParts(event) {
@@ -940,7 +937,7 @@ const IS_ANDROID = /Android/i.test(navigator.userAgent || "");
 
 games.addEventListener("click", event => {
   const link = event.target.closest("a.watch");
-  if (!link || !FUTENIUM_PACKAGE || !IS_ANDROID) return;   // fora do Android: link normal (página da loja)
+  if (!link || !IS_ANDROID) return;   // fora do Android: link normal (página da loja)
   event.preventDefault();
   window.location.href = `market://details?id=${FUTENIUM_PACKAGE}`;   // abre a Play Store do aparelho
 });
