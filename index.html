@@ -167,7 +167,7 @@ const FOOTBALL_DATA_KEY = "ab9b41f948234746983950dcb52a9b79";
 // Se o navegador bloquear a football-data.org, use um servidor intermediário (Cloudflare Worker):
 // cole aqui o endereço do seu Worker, por exemplo "https://futplay-api.seunome.workers.dev".
 // Com o Worker, a chave fica guardada no servidor e pode ser apagada daqui.
-const FD_PROXY = "https://futplay-api.seunome.workers.dev";
+const FD_PROXY = "https://futplay-api.brunosamuel1524.workers.dev/";
 const FD_BASE = FD_PROXY ? FD_PROXY.replace(/\/+$/, "") : "https://api.football-data.org";
 const FD_ENABLED = Boolean(FD_PROXY || FOOTBALL_DATA_KEY);
 const fdHeaders = () => FD_PROXY ? {} : {"X-Auth-Token": FOOTBALL_DATA_KEY};
