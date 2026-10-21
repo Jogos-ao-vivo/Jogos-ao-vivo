@@ -39,7 +39,7 @@ export default {
       
       // Coloque sua chave da API-Football nas Variáveis de Ambiente da Cloudflare como `API_FOOTBALL_KEY`
       // ou substitua a string abaixo se preferir hardcodar diretamente:
-      const apiKey = env.API_FOOTBALL_KEY || "SUA_CHAVE_API_FOOTBALL_AQUI";
+      const apiKey = env.API_FOOTBALL_KEY || "fdee527619fe1292aeb3235b94cc5c4d";
 
       try {
         const response = await fetch(targetUrl, {
