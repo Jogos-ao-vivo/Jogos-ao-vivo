@@ -1,11 +1,10 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#080b10">
-<title>FutPlay | Futebol ao vivo</title>
+<title>FutPlay | Esportes ao vivo</title>
 <style>
 :root {
   color-scheme: dark;
@@ -68,7 +67,7 @@ h2{font-size:20px;margin:0}
 .status.soon{color:var(--yellow)}
 .teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin:22px 0}
 .team{text-align:center;min-width:0}
-.team img{width:42px;height:42px;object-fit:contain;margin-bottom:9px}
+.team img{width:42px;height:42px;object-fit:contain;margin-bottom:9px;border-radius:50%}
 .team-name{font-size:13px;font-weight:700;overflow-wrap:anywhere}
 .score{font-size:23px;font-weight:900;white-space:nowrap}
 .mid{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:92px}
@@ -126,7 +125,6 @@ button.btn{border:0;font-family:inherit;cursor:pointer}
 button.btn.details{border:1px solid var(--line)}
 .btn.details:hover{border-color:var(--green);color:var(--green)}
 
-/* Janela de detalhes do jogo */
 .modal{
   position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
   padding:18px;background:#000000b3;backdrop-filter:blur(4px);
@@ -179,7 +177,6 @@ button.btn.details{border:1px solid var(--line)}
  .lineups{grid-template-columns:1fr}
 }
 
-/* Campo com a escalação */
 .legend{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;font-weight:800}
 .lg{display:flex;align-items:center;gap:7px;min-width:0}
 .lg i{width:12px;height:12px;border-radius:50%;flex:none}
@@ -234,32 +231,32 @@ button.btn.details{border:1px solid var(--line)}
 <header>
   <div class="nav">
     <div class="logo">FUT<span>PLAY</span></div>
-    <div class="live-indicator">● PLACARES E JOGOS</div>
+    <div class="live-indicator">● PLACARES E EVENTOS</div>
   </div>
 </header>
 
 <main class="container">
   <section class="hero">
-    <div class="eyebrow">SEU FUTEBOL EM UM SÓ LUGAR</div>
-    <h1>O jogo começa<br>por aqui. ⚽</h1>
-    <p>Confira os horários, acompanhe os placares e encontre onde assistir às principais competições do futebol.</p>
+    <div class="eyebrow">SEU ESPORTE EM UM SÓ LUGAR</div>
+    <h1>O evento começa<br>por aqui. ⚽ 🥊</h1>
+    <p>Confira os horários, acompanhe os placares e encontre onde assistir às principais competições de futebol e UFC.</p>
   </section>
 
   <div class="filters" id="filters"></div>
 
   <div class="section-head">
-    <h2 id="sectionTitle">Jogos e horários</h2>
+    <h2 id="sectionTitle">Eventos e horários</h2>
     <button class="filter" id="refresh">↻ Atualizar</button>
   </div>
   <div class="source info" id="sourceInfo"></div>
   <div class="muted" id="updated">Horários exibidos no fuso do seu dispositivo.</div>
 
   <section class="grid" id="games" aria-live="polite">
-    <div class="loading">Carregando partidas...</div>
+    <div class="loading">Carregando eventos...</div>
   </section>
 </main>
 
-<div class="modal" id="detail" role="dialog" aria-modal="true" aria-label="Detalhes do jogo">
+<div class="modal" id="detail" role="dialog" aria-modal="true" aria-label="Detalhes do evento">
   <div class="sheet">
     <div class="sheet-head">
       <button class="close" type="button" aria-label="Fechar">✕</button>
@@ -267,7 +264,7 @@ button.btn.details{border:1px solid var(--line)}
     </div>
     <div class="tabs" id="detailTabs">
       <button class="filter tab active" type="button" data-tab="resumo">Resumo</button>
-      <button class="filter tab" type="button" data-tab="escalacoes">Escalações</button>
+      <button class="filter tab" type="button" data-tab="escalacoes">Escalações / Card</button>
       <button class="filter tab" type="button" data-tab="estatisticas">Estatísticas</button>
     </div>
     <div class="sheet-body" id="detailBody"></div>
@@ -275,42 +272,35 @@ button.btn.details{border:1px solid var(--line)}
 </div>
 
 <footer>
-  FUTPLAY · Calendário e placares de futebol<br>
-  Dados esportivos de football-data.org e endpoints públicos da ESPN.
+  FUTPLAY · Calendário e placares de futebol e MMA<br>
+  Dados esportivos de football-data.org, FighterAPI e endpoints públicos da ESPN.
   As transmissões pertencem aos respectivos detentores dos direitos.
-  A disponibilidade dos jogos depende da competição e da região.
+  A disponibilidade dos eventos depende da competição e da região.
 </footer>
 
 <script>
-// ===== football-data.org =====
-// 1) Crie uma conta grátis em https://www.football-data.org/client/register
-// 2) Cole abaixo a chave (API token) que chega no seu e-mail.
-// Sem a chave, o site usa só a ESPN, como antes.
-const FOOTBALL_DATA_KEY = "";   // não é necessária: a chave fica guardada no Worker
-
-// Se o navegador bloquear a football-data.org, use um servidor intermediário (Cloudflare Worker):
-// cole aqui o endereço do seu Worker, por exemplo "https://futplay-api.seunome.workers.dev".
-// Com o Worker, a chave fica guardada no servidor e pode ser apagada daqui.
+// ===== Configurações da API =====
+const FOOTBALL_DATA_KEY = "";
 const FD_PROXY = "https://futplay-api.brunosamuel1524.workers.dev";
 const FD_BASE = FD_PROXY ? FD_PROXY.replace(/\/+$/, "") : "https://api.football-data.org";
 const FD_ENABLED = Boolean(FD_PROXY || FOOTBALL_DATA_KEY);
 const fdHeaders = () => FD_PROXY ? {} : {"X-Auth-Token": FOOTBALL_DATA_KEY};
 
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
+const ESPN_MMA_BASE = "https://site.api.espn.com/apis/site/v2/sports/mma/mma";
 
-// "Onde assistir": no Android tenta abrir o app Futenium 2026 direto; se o app não abrir
-// (não instalado ou sem suporte a link), cai na página dele na Play Store. Nos outros aparelhos abre a página da loja.
 const FUTENIUM_PACKAGE = "com.futteniiumm26.app";
-const PAST_DAYS = 2;     // quantos dias para trás buscar
-const FUTURE_DAYS = 7;   // quantos dias para frente buscar
-const PAGE_SIZE = 60;    // jogos exibidos por vez
-const LIVE_POLL_MS = 1000;      // tempo real (ESPN): jogos ao vivo a cada 1 segundo
-const FD_POLL_MS = 10000;       // tempo real (football-data.org): a cada 10 s, por causa do limite de 10 consultas/min
-const OVERLAY_MS = 20000;       // quanto tempo o placar da ESPN vale sobre o da football-data.org (que atrasa)
-const OVERLAY_END_MS = 600000;  // jogo encerrado pela ESPN: vale por 10 minutos
-const FULL_REFRESH_MS = 30000;  // lista completa (novos jogos, encerrados) a cada 30 segundos
+const PAST_DAYS = 2;     
+const FUTURE_DAYS = 7;   
+const PAGE_SIZE = 60;    
+const LIVE_POLL_MS = 1000;      
+const FD_POLL_MS = 10000;       
+const OVERLAY_MS = 20000;       
+const OVERLAY_END_MS = 600000;  
+const FULL_REFRESH_MS = 30000;  
 
 const leagues = {
+  "ufc":"UFC / MMA",
   "bra.1":"Brasileirão Série A",
   "bra.2":"Brasileirão Série B",
   "bra.copa_do_brasil":"Copa do Brasil",
@@ -328,7 +318,6 @@ const leagues = {
   "fifa.worldq.conmebol":"Eliminatórias Sul-Americanas"
 };
 
-// Ligas que a football-data.org cobre no plano grátis (id da liga -> código deles)
 const FD_CODES = {
   "bra.1":"BSA",
   "uefa.champions":"CL",
@@ -458,8 +447,8 @@ function card(event, leagueName) {
   const h = home.team || {};
   const a = away.team || {};
 
-  const homeName = h.displayName || h.name || "Time da casa";
-  const awayName = a.displayName || a.name || "Time visitante";
+  const homeName = h.displayName || h.name || "Lutador / Time 1";
+  const awayName = a.displayName || a.name || "Lutador / Time 2";
   const watchURL = searchWatch(homeName, awayName, leagueName);
 
   return `<article class="match" data-key="${esc(cardKey(event))}" data-score="${esc(scoreKey)}">
@@ -481,7 +470,6 @@ function card(event, leagueName) {
   </article>`;
 }
 
-// Atualiza só o placar, o status e o tempo de um cartão (sem recriar logos)
 function updateCard(event) {
   const el = games.querySelector(`[data-key="${cardKey(event)}"]`);
   if (!el) return;
@@ -494,7 +482,6 @@ function updateCard(event) {
   st.textContent = state.label;
   el.querySelector(".mid").innerHTML = mid;
 
-  // Gol: o placar pisca em verde por alguns segundos
   const goals = k => String(k).split("-").reduce((sum, n) => sum + (Number(n) || 0), 0);
   const previous = el.dataset.score;
   el.dataset.score = scoreKey;
@@ -538,11 +525,13 @@ async function getJSON(url, ms = 15000, headers = {}) {
   }
 }
 
-// ESPN: uma consulta por competição. Tenta o intervalo de datas e, se a ESPN
-// recusar ou devolver vazio, volta para a consulta simples (jogos do dia).
 let rangeSupported = true;
 
 async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
+  if (id === "ufc") {
+    return fetchEspnMMA();
+  }
+
   const tag = events => (events || []).map(event => ({...event, leagueId:id, source:"espn"}));
   const base = `${ESPN_BASE}/${id}/scoreboard`;
 
@@ -560,13 +549,53 @@ async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
     const data = await getJSON(base);
     return tag(data.events);
   } catch (error) {
-    // Competição inexistente/sem calendário não conta como falha
     if (error.status >= 400 && error.status < 500) return [];
     throw error;
   }
 }
 
-// football-data.org: uma única consulta traz as partidas de todas as ligas
+async function fetchEspnMMA() {
+  try {
+    const data = await getJSON(`${ESPN_MMA_BASE}/scoreboard`);
+    return (data.events || []).map(event => {
+      const comp = event.competitions?.[0] || {};
+      const c1 = comp.competitors?.[0] || {};
+      const c2 = comp.competitors?.[1] || {};
+      
+      return {
+        id: event.id,
+        leagueId: "ufc",
+        leagueName: event.name || "UFC",
+        source: "espn",
+        date: event.date,
+        status: event.status,
+        competitions: [{
+          competitors: [
+            {
+              homeAway: "home",
+              score: c1.winner ? "V" : (c2.winner ? "D" : null),
+              team: {
+                displayName: c1.athlete?.displayName || c1.athlete?.fullName || "Lutador 1",
+                logo: c1.athlete?.headshot || ""
+              }
+            },
+            {
+              homeAway: "away",
+              score: c2.winner ? "V" : (c1.winner ? "D" : null),
+              team: {
+                displayName: c2.athlete?.displayName || c2.athlete?.fullName || "Lutador 2",
+                logo: c2.athlete?.headshot || ""
+              }
+            }
+          ]
+        }]
+      };
+    });
+  } catch (error) {
+    return [];
+  }
+}
+
 function normalizeFD(m, fallbackCode) {
   const leagueId = FD_LEAGUE_BY_CODE[m.competition?.code || fallbackCode];
   if (!leagueId || m.status === "CANCELLED") return null;
@@ -621,7 +650,6 @@ async function fetchFootballData(past = PAST_DAYS, future = FUTURE_DAYS) {
   return list;
 }
 
-// Temporada inteira de uma liga (todos os jogos: passados, de hoje e futuros)
 let fdSeasonCache = {};
 
 async function fetchFootballDataSeason(code) {
@@ -652,23 +680,21 @@ function showSource({useFD, fd, espnCount}) {
   let text;
   if (!FD_ENABLED) {
     cls = "warn";
-    text = "Fonte: ESPN (sem chave da football-data.org)";
+    text = "Fonte: ESPN / FighterAPI";
   } else if (!useFD) {
-    text = "Fonte: ESPN";
+    text = "Fonte: ESPN / FighterAPI";
   } else if (fd.ok) {
     cls = "ok";
-    text = espnCount ? "Fonte: football-data.org + ESPN" : "Fonte: football-data.org";
+    text = espnCount ? "Fonte: football-data.org + ESPN + FighterAPI" : "Fonte: football-data.org";
   } else {
     cls = "warn";
-    text = `football-data.org indisponível (${fdReason(fd.error)}) · usando a ESPN`;
+    text = `football-data.org indisponível (${fdReason(fd.error)}) · usando a ESPN / FighterAPI`;
   }
   sourceInfo.className = "source " + cls;
   sourceInfo.textContent = text;
 }
 
-/* ---------- Placar mais rápido: ESPN por cima da football-data.org ---------- */
-// O plano grátis da football-data.org atrasa os placares. Nos jogos ao vivo,
-// o placar e o tempo vêm da ESPN, que atualiza mais rápido.
+/* ---------- Placar mais rápido ---------- */
 const norm = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .toLowerCase().replace(/[^a-z0-9]/g, "");
 const similar = (a, b) => a && b && (a.includes(b) || b.includes(a) || a.slice(0, 4) === b.slice(0, 4));
@@ -717,8 +743,6 @@ function applyOverlay(event) {
 }
 
 /* ---------- Ordenação ---------- */
-// Ao vivo primeiro, depois os próximos jogos (do mais perto ao mais longe)
-// e por último os encerrados (do mais recente ao mais antigo).
 function rank(event) {
   const t = event.status?.type;
   if (t?.state === "in") return 0;
@@ -749,10 +773,10 @@ function render() {
       card(event, event.leagueName || leagues[event.leagueId] || event.leagueId)
     ).join("");
     if (matches.length > visibleCount) {
-      html += `<button class="more" id="more">Ver mais jogos (${matches.length - visibleCount})</button>`;
+      html += `<button class="more" id="more">Ver mais eventos (${matches.length - visibleCount})</button>`;
     }
     if (lastFailures) {
-      html += `<div class="empty">Algumas fontes não responderam à consulta. Os jogos disponíveis estão exibidos acima.</div>`;
+      html += `<div class="empty">Algumas fontes não responderam à consulta. Os eventos disponíveis estão exibidos acima.</div>`;
     }
   }
   if (html === lastHTML) return;
@@ -763,7 +787,7 @@ function render() {
 async function loadGames(silent = false) {
   const myRequest = ++requestNumber;
   document.getElementById("sectionTitle").textContent =
-    selected === "all" ? "Jogos e horários" : leagues[selected];
+    selected === "all" ? "Eventos e horários" : leagues[selected];
 
   if (!silent || !matches.length) {
     games.innerHTML = '<div class="loading">Buscando calendários e placares...</div>';
@@ -773,19 +797,17 @@ async function loadGames(silent = false) {
   const ids = selected === "all" ? Object.keys(leagues) : [selected];
   const useFD = FD_ENABLED && ids.some(id => FD_CODES[id]);
 
-  // football-data.org para as ligas dela; ESPN para as demais
-  const wide = selected !== "all";               // liga escolhida: calendário inteiro
+  const wide = selected !== "all";               
   const past = wide ? 300 : PAST_DAYS;
   const future = wide ? 300 : FUTURE_DAYS;
   const fdPromise = useFD
-    ? (wide ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
+    ? (wide && FD_CODES[selected] ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
     : Promise.resolve({ok:false, list:[]});
   const espnIds = ids.filter(id => !(useFD && FD_CODES[id]));
   const espnPromise = Promise.allSettled(espnIds.map(id => fetchEspn(id, past, future)));
   const [fd, espnResults] = await Promise.all([fdPromise, espnPromise]);
   if (myRequest !== requestNumber) return;
 
-  // Se a football-data falhar, as ligas dela voltam para a ESPN
   let fallbackResults = [];
   if (useFD && !fd.ok) {
     const fallbackIds = ids.filter(id => FD_CODES[id]);
@@ -808,7 +830,6 @@ async function loadGames(silent = false) {
   }
   const all = Array.from(unique.values()).map(e => e.source === "fd" ? applyOverlay(e) : e);
 
-  // Falha total numa atualização automática: mantém o que já estava na tela
   if (!all.length && total > 0 && failures === total && matches.length && silent) {
     updated.textContent = "Não foi possível atualizar agora. Mostrando a última consulta com sucesso.";
     return;
@@ -829,7 +850,7 @@ filtersEl.addEventListener("click", event => {
   const button = event.target.closest("button[data-league]");
   if (!button) return;
   selected = button.dataset.league;
-  visibleCount = selected === "all" ? PAGE_SIZE : Infinity;   // liga escolhida: mostra TODOS os jogos
+  visibleCount = selected === "all" ? PAGE_SIZE : Infinity;   
   filtersEl.querySelectorAll(".filter").forEach(b =>
     b.classList.toggle("active", b === button)
   );
@@ -844,9 +865,7 @@ games.addEventListener("click", event => {
 
 document.getElementById("refresh").addEventListener("click", () => loadGames());
 
-/* ---------- Tempo real: jogos ao vivo a cada 1 segundo ---------- */
-// Consulta só as competições que têm jogo ao vivo, uma de cada vez (sem sobreposição),
-// e atualiza apenas o placar/tempo dos cartões que mudaram.
+/* ---------- Tempo real ---------- */
 async function pollLive() {
   if (polling || document.hidden) return true;
   const now = Date.now();
@@ -854,7 +873,7 @@ async function pollLive() {
     const t = e.status?.type;
     if (t?.state === "in") return true;
     if (t?.state !== "pre") return false;
-    const start = new Date(e.date).getTime();      // começa em 1 min ou começou há menos de 3 h
+    const start = new Date(e.date).getTime();      
     return start <= now + 60000 && start >= now - 3 * 3600000;
   };
   const liveLeagues = [...new Set(matches.filter(isActive).map(e => e.leagueId))];
@@ -866,18 +885,17 @@ async function pollLive() {
   let needsFullReload = false;
   try {
     const results = await Promise.allSettled(liveLeagues.map(id => fetchEspn(id, 1, 0)));
-    if (token !== requestNumber) return true;   // o filtro mudou durante a consulta
+    if (token !== requestNumber) return true;   
     results.forEach(result => {
       if (result.status !== "fulfilled") { ok = false; return; }
       result.value.forEach(fresh => {
         let index = matches.findIndex(m => cardKey(m) === cardKey(fresh));
-        if (index >= 0) {                            // jogo vindo da própria ESPN
-          if (rank(matches[index]) !== rank(fresh)) needsFullReload = true; // começou/terminou
+        if (index >= 0) {                            
+          if (rank(matches[index]) !== rank(fresh)) needsFullReload = true; 
           matches[index] = fresh;
           updateCard(fresh);
           return;
         }
-        // jogo da football-data.org: usa o placar mais rápido da ESPN
         if (fresh.status?.type?.state === "pre") return;
         index = matches.findIndex(m => m.source === "fd" && sameGame(m, fresh));
         if (index < 0) return;
@@ -901,10 +919,9 @@ async function pollLive() {
 
 async function liveLoop() {
   const ok = await pollLive();
-  setTimeout(liveLoop, ok ? LIVE_POLL_MS : 5000);   // se falhar, espera um pouco mais
+  setTimeout(liveLoop, ok ? LIVE_POLL_MS : 5000);   
 }
 
-// Jogos da football-data.org: uma única consulta a cada 10 s (limite do plano grátis)
 async function pollLiveFD() {
   if (!FD_ENABLED || document.hidden) return true;
   if (!matches.some(e => e.source === "fd" && e.status?.type?.state === "in")) return true;
@@ -933,19 +950,19 @@ async function fdLoop() {
   setTimeout(fdLoop, ok ? FD_POLL_MS : 30000);
 }
 
-/* ---------- Onde assistir: tenta abrir o app Futenium direto (Android) ---------- */
+/* ---------- Onde assistir ---------- */
 const IS_ANDROID = /Android/i.test(navigator.userAgent || "");
 
 games.addEventListener("click", event => {
   const link = event.target.closest("a.watch");
-  if (!link || !IS_ANDROID) return;      // fora do Android: link normal (página da loja)
+  if (!link || !IS_ANDROID) return;      
   event.preventDefault();
   window.location.href = "intent://#Intent;action=android.intent.action.MAIN;" +
     "category=android.intent.category.LAUNCHER;" +
     `package=${FUTENIUM_PACKAGE};S.browser_fallback_url=${encodeURIComponent(link.href)};end`;
 });
 
-/* ---------- Detalhes do jogo: resumo, escalações e estatísticas (ESPN) ---------- */
+/* ---------- Detalhes do evento ---------- */
 const STAT_NAMES = {
   possessionPct:"Posse de bola", totalShots:"Finalizações", shotsOnTarget:"Finalizações no gol",
   blockedShots:"Finalizações bloqueadas", wonCorners:"Escanteios", foulsCommitted:"Faltas",
@@ -961,7 +978,7 @@ const detailEl = document.getElementById("detail");
 const detailHead = document.getElementById("detailHead");
 const detailTabs = document.getElementById("detailTabs");
 const detailBody = document.getElementById("detailBody");
-const detailIds = {};      // id do jogo da football-data -> id do jogo na ESPN
+const detailIds = {};      
 let detail = {key:null, event:null, tab:"resumo", data:null, state:"idle"};
 let detailTimer = null;
 let detailTick = 0;
@@ -1010,7 +1027,6 @@ function eventLabel(text) {
   return text || "";
 }
 
-// Traduz o texto dos lances (a ESPN envia em inglês). Nomes de times e jogadores ficam como estão.
 const PT_RULES = [
   [/Goal!/g, "Gol!"],
   [/Own Goal by (.+?), (.+?)\./g, "Gol contra de $1, $2."],
@@ -1147,6 +1163,15 @@ async function loadDetail(silent = false) {
     renderDetail();
   }
   try {
+    if (event.leagueId === "ufc") {
+      const data = await getJSON(`${ESPN_MMA_BASE}/summary?event=${encodeURIComponent(event.id)}`);
+      if (key !== detail.key) return;
+      detail.data = data;
+      detail.state = "ok";
+      renderDetail();
+      return;
+    }
+
     const id = await resolveEspnId(event);
     if (key !== detail.key) return;
     if (!id) {
@@ -1161,7 +1186,7 @@ async function loadDetail(silent = false) {
     detail.state = "ok";
   } catch (error) {
     if (key !== detail.key) return;
-    if (!detail.data) detail.state = "error";   // numa atualização automática mantém o que já está na tela
+    if (!detail.data) detail.state = "error";   
   }
   renderDetail();
 }
@@ -1175,9 +1200,9 @@ function renderDetailHead() {
   const leagueName = event.leagueName || leagues[event.leagueId] || event.leagueId;
   const html = `<div class="dh-league">${esc(leagueName)} · ${esc(state.label)}</div>
     <div class="teams">
-      ${teamHTML({name:h.displayName || h.name || "Time da casa", logo:h.logo})}
+      ${teamHTML({name:h.displayName || h.name || "Time 1", logo:h.logo})}
       <div class="mid">${mid}</div>
-      ${teamHTML({name:a.displayName || a.name || "Time visitante", logo:a.logo})}
+      ${teamHTML({name:a.displayName || a.name || "Time 2", logo:a.logo})}
     </div>`;
   if (detailHead.dataset.html !== html) {
     detailHead.dataset.html = html;
@@ -1207,10 +1232,10 @@ function summaryHTML(data) {
       text: translateText(c.text || "")
     }));
   }
-  items = items.filter(i => i.text || i.type).reverse();   // mais recentes primeiro
+  items = items.filter(i => i.text || i.type).reverse();   
 
   if (!items.length) {
-    return html + `<div class="sheet-note">Os lances ainda não estão disponíveis para este jogo.</div>`;
+    return html + `<div class="sheet-note">Os detalhes do evento ainda não estão disponíveis.</div>`;
   }
   return html + items.map(i => `<div class="ev">
       <div class="ev-time">${esc(i.time)}</div>
@@ -1227,7 +1252,6 @@ const ROLE_OF = {
 };
 const roleOf = p => ROLE_OF[String(p.position?.abbreviation || "").toUpperCase().split("-")[0]] || "";
 
-// negativo = lado esquerdo, positivo = lado direito, 0 = centro (do ponto de vista do próprio time)
 function sideOf(p) {
   const a = String(p.position?.abbreviation || "").toUpperCase();
   if (/^(LB|LWB|LW|LM|LF)$/.test(a)) return -2;
@@ -1246,7 +1270,6 @@ function shortName(name) {
   return prefixes.includes(before.toLowerCase()) ? before + " " + last : last;
 }
 
-// Distribui os 11 titulares em linhas (goleiro + linhas da formação)
 function pitchRows(r, starters) {
   let order = starters.slice();
   const places = order.map(p => Number(p.formationPlace));
@@ -1271,7 +1294,6 @@ function pitchRows(r, starters) {
     counts[2] = field.length - counts[0] - counts[1];
     counts = counts.filter(n => n > 0);
     if (validFormation === false && (d && m && f > 0)) {
-      // com a formação desconhecida, ordena por defesa -> meio -> ataque
       const rank = {G:0, D:1, M:2, F:3, "":2};
       field.sort((a, b) => rank[roleOf(a)] - rank[roleOf(b)]);
     }
@@ -1282,7 +1304,7 @@ function pitchRows(r, starters) {
   counts.forEach(n => {
     const row = field.slice(cursor, cursor + n);
     cursor += n;
-    row.sort((a, b) => sideOf(a) - sideOf(b));   // esquerda -> direita
+    row.sort((a, b) => sideOf(a) - sideOf(b));   
     rows.push(row);
   });
   return {gk, rows, formation: validFormation ? formation : ""};
@@ -1296,7 +1318,6 @@ function pitchPlayers(r, isHome, startIndex) {
   let index = startIndex;
 
   const place = (p, x, y) => {
-    // time de cima ataca para baixo: o lado "esquerdo" dele fica à direita da tela
     const left = isHome ? 100 - x : x;
     const top = isHome ? y : 100 - y;
     const num = p.jersey || p.athlete?.jersey || "";
@@ -1316,6 +1337,17 @@ function pitchPlayers(r, isHome, startIndex) {
 }
 
 function lineupsHTML(data) {
+  if (detail.event?.leagueId === "ufc") {
+    const comps = data.boxscore?.competitions || data.header?.competitions || [];
+    if (!comps.length) return `<div class="sheet-note">Card do evento não disponível.</div>`;
+    
+    return comps.map((c, idx) => {
+      const c1 = c.competitors?.[0]?.athlete?.displayName || "Lutador 1";
+      const c2 = c.competitors?.[1]?.athlete?.displayName || "Lutador 2";
+      return `<div class="pl"><span class="n">${idx + 1}</span><span class="nm"><b>${esc(c1)}</b> vs <b>${esc(c2)}</b></span></div>`;
+    }).join("");
+  }
+
   const rosters = (data.rosters || []).filter(r => (r.roster || []).length);
   if (!rosters.length) {
     return `<div class="sheet-note">As escalações ainda não foram divulgadas.</div>`;
@@ -1358,8 +1390,6 @@ function lineupsHTML(data) {
   return legend + field + (subs ? `<div class="lineups" style="margin-top:18px">${subs}</div>` : "");
 }
 
-// Total de substituições já feitas por cada time (a ESPN não manda isso nas estatísticas,
-// então contamos nos lances do jogo)
 function countSubs(data, homeTeam, awayTeam) {
   const hId = String(homeTeam?.id ?? "");
   const aId = String(awayTeam?.id ?? "");
@@ -1383,7 +1413,7 @@ function countSubs(data, homeTeam, awayTeam) {
     add(k.team?.id, k.team?.displayName || nameFromText(k.text));
   });
 
-  if (!h && !a) {      // sem lances-chave: tenta a narração
+  if (!h && !a) {      
     (data.commentary || []).forEach(c => {
       const team = nameFromText(c.text);
       if (team) add(null, team);
@@ -1395,7 +1425,7 @@ function countSubs(data, homeTeam, awayTeam) {
 function statsHTML(data) {
   const teams = data.boxscore?.teams || [];
   if (teams.length < 2) {
-    return `<div class="sheet-note">As estatísticas ainda não estão disponíveis para este jogo.</div>`;
+    return `<div class="sheet-note">As estatísticas ainda não estão disponíveis para este evento.</div>`;
   }
   const competitors = data.header?.competitions?.[0]?.competitors || [];
   const homeId = competitors.find(c => c.homeAway === "home")?.team?.id ?? competitors.find(c => c.homeAway === "home")?.id;
@@ -1405,9 +1435,8 @@ function statsHTML(data) {
   const awayStats = Object.fromEntries((away.statistics || []).map(s => [s.name, s]));
   const rows = (home.statistics || []).filter(s => s.displayValue != null && awayStats[s.name]?.displayValue != null);
 
-  // linha extra: substituições feitas (só quando o jogo já começou)
   const gameState = data.header?.competitions?.[0]?.status?.type?.state;
-  if (gameState !== "pre") {
+  if (gameState !== "pre" && detail.event?.leagueId !== "ufc") {
     const subs = countSubs(data, home.team, away.team);
     rows.unshift({
       name: "substitutions", label: "Substituições", displayValue: String(subs.h),
@@ -1416,11 +1445,11 @@ function statsHTML(data) {
     awayStats.substitutions = {displayValue: String(subs.a)};
   }
   if (!rows.length) {
-    return `<div class="sheet-note">As estatísticas ainda não estão disponíveis para este jogo.</div>`;
+    return `<div class="sheet-note">As estatísticas ainda não estão disponíveis para este evento.</div>`;
   }
   const names = `<div class="stat-row" style="margin-bottom:14px">
-      <span>${esc(home.team?.displayName || "Casa")}</span><span></span>
-      <span class="r">${esc(away.team?.displayName || "Fora")}</span></div>`;
+      <span>${esc(home.team?.displayName || "Atleta / Time 1")}</span><span></span>
+      <span class="r">${esc(away.team?.displayName || "Atleta / Time 2")}</span></div>`;
   return names + rows.map(s => {
     const a = awayStats[s.name];
     const x = parseFloat(String(s.displayValue).replace(",", "."));
@@ -1445,7 +1474,7 @@ function renderDetail() {
   if (detail.state === "loading") {
     html = `<div class="sheet-note">Carregando detalhes...</div>`;
   } else if (detail.state === "none") {
-    html = `<div class="sheet-note">Os detalhes deste jogo ainda não estão disponíveis.<br>Tente novamente mais perto do início da partida.</div>`;
+    html = `<div class="sheet-note">Os detalhes deste evento ainda não estão disponíveis.<br>Tente novamente mais perto do início.</div>`;
   } else if (detail.state === "error" || !detail.data) {
     html = `<div class="sheet-note"><span class="error">Não foi possível carregar os detalhes.</span><br>Verifique a conexão e tente novamente.</div>`;
   } else {
@@ -1476,7 +1505,7 @@ function openDetail(key) {
   clearInterval(detailTimer);
   detailTick = 0;
   detailTimer = setInterval(() => {
-    renderDetailHead();                       // placar e tempo acompanham a lista
+    renderDetailHead();                       
     detailTick++;
     const ev = detailEvent();
     const live = ev?.status?.type?.state === "in";

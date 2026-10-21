@@ -1,23 +1,16 @@
-// Servidor intermediário (Cloudflare Worker) para a football-data.org
-// - guarda a chave em segredo (variável FOOTBALL_DATA_KEY)
-// - libera o acesso pelo navegador (CORS)
-// - guarda cada resposta por um tempo, para poucas pessoas gastarem poucas consultas
-//   (o plano grátis permite só 10 consultas por minuto, somando todo mundo)
-// - se a football-data recusar (erro 429) ou cair, devolve a última cópia boa
-// - trava as consultas em 8 por minuto, deixando folga abaixo do limite de 10
-
-const memory = new Map();      // chave -> {time, status, type, body}
-const upstreamCalls = [];      // horários das últimas consultas feitas à football-data
-let blockedUntil = 0;          // depois de um 429, para de consultar por um tempo
+// Servidor intermediário (Cloudflare Worker) para football-data.org e FighterAPI
+const memory = new Map();      
+const upstreamCalls = [];      
+let blockedUntil = 0;          
 
 const MAX_CALLS_PER_MIN = 8;
 const BLOCK_AFTER_429_MS = 30000;
 const MAX_ENTRIES = 300;
 
-// Quanto tempo uma resposta é considerada "fresca" (em segundos)
 function ttlSeconds(pathname) {
-  if (/^\/v4\/competitions\/[^/]+\/matches/.test(pathname)) return 900; // temporada inteira: 15 min
-  if (pathname === "/v4/matches") return 15;                            // jogos de hoje / ao vivo: 15 s
+  if (/^\/v4\/competitions\/[^/]+\/matches/.test(pathname)) return 900;
+  if (pathname === "/v4/matches") return 15;
+  if (pathname.startsWith("/fighterapi/")) return 300; // Cache de 5 min para FighterAPI
   return 120;
 }
 
@@ -25,7 +18,7 @@ export default {
   async fetch(request, env) {
     const cors = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "*",
       "Access-Control-Expose-Headers": "X-Cache"
     };
@@ -35,13 +28,43 @@ export default {
     }
 
     const url = new URL(request.url);
+    const ttl = ttlSeconds(url.pathname);
+    const now = Date.now();
+
+    // Endpoints do FighterAPI via proxy
+    if (url.pathname.startsWith("/fighterapi/")) {
+      const targetPath = url.pathname.replace("/fighterapi", "/v1");
+      const targetUrl = "https://mcp.fighterapi.com" + targetPath + url.search;
+      const apiKey = env.FIGHTER_API_KEY || "sk_live_Tj0bSgx3oXNdPQAGAkor30x1cdpwGXdpA4FqA8iUkKk";
+
+      try {
+        const response = await fetch(targetUrl, {
+          method: request.method,
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey
+          },
+          body: request.method === "POST" ? await request.text() : undefined
+        });
+
+        const data = await response.text();
+        return new Response(data, {
+          status: response.status,
+          headers: {...cors, "Content-Type": "application/json"}
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({error: "Erro ao conectar à FighterAPI"}), {
+          status: 502,
+          headers: {...cors, "Content-Type": "application/json"}
+        });
+      }
+    }
+
     if (request.method !== "GET" || !url.pathname.startsWith("/v4/")) {
       return new Response("Not found", {status: 404, headers: cors});
     }
 
     const key = url.pathname + url.search;
-    const ttl = ttlSeconds(url.pathname);
-    const now = Date.now();
     const saved = memory.get(key);
 
     const reply = (entry, state) => new Response(entry.body, {
@@ -49,10 +72,8 @@ export default {
       headers: {...cors, "Content-Type": entry.type, "X-Cache": state}
     });
 
-    // 1) resposta ainda fresca: não gasta consulta nenhuma
     if (saved && now - saved.time < ttl * 1000) return reply(saved, "HIT");
 
-    // 2) trava de segurança: perto do limite, usa a cópia guardada
     while (upstreamCalls.length && now - upstreamCalls[0] > 60000) upstreamCalls.shift();
     if (now < blockedUntil || upstreamCalls.length >= MAX_CALLS_PER_MIN) {
       if (saved) return reply(saved, "STALE");
@@ -63,12 +84,10 @@ export default {
     }
     upstreamCalls.push(now);
 
-    // 3) consulta a football-data.org
     let upstream;
     try {
       const options = {headers: {"X-Auth-Token": env.FOOTBALL_DATA_KEY}};
       if (ttl >= 120) {
-        // respostas longas também ficam no cache da Cloudflare (só se deu certo)
         options.cf = {cacheEverything: true, cacheTtlByStatus: {"200-299": ttl, "300-599": -1}};
       }
       upstream = await fetch("https://api.football-data.org" + key, options);
@@ -91,7 +110,6 @@ export default {
 
     if (upstream.status === 429) blockedUntil = now + BLOCK_AFTER_429_MS;
 
-    // 4) deu erro: prefere a última cópia boa a mostrar erro
     if (saved) return reply(saved, "STALE");
     return new Response(await upstream.text(), {
       status: upstream.status,
