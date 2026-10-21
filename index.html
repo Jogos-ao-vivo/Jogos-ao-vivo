@@ -66,6 +66,7 @@ h2{font-size:20px;margin:0}
 .status.live{color:var(--green)}
 .status.done{color:var(--red)}
 .status.soon{color:var(--yellow)}
+.status.late{color:var(--muted)}
 .teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin:22px 0}
 .team{text-align:center;min-width:0}
 .team img{width:42px;height:42px;object-fit:contain;margin-bottom:9px}
@@ -81,6 +82,8 @@ h2{font-size:20px;margin:0}
 .time.done .t-hour{color:var(--red);background:#ff646e1a;border-color:#ff646e55}
 .time.live .t-date{color:var(--green)}
 .time.live .t-hour{color:var(--green);background:#42e69a1a;border-color:#42e69a55}
+.time.late .t-date,.time.late .t-hour{color:var(--muted)}
+.time.late .t-hour{background:#ffffff08;border-color:var(--line)}
 .actions{display:flex;gap:8px;margin-top:15px}
 .btn{
   display:flex;align-items:center;justify-content:center;
@@ -113,6 +116,14 @@ footer{border-top:1px solid var(--line);margin-top:45px;padding:25px 20px;color:
 button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offset:3px}
 button.btn{border:0;cursor:pointer;font:inherit;font-size:12px;font-weight:800}
 body.modal-open{overflow:hidden}
+.search{display:flex;gap:9px;margin:24px 0 0}
+.search input{
+  flex:1;min-width:0;background:var(--panel);color:var(--text);
+  border:1px solid var(--line);border-radius:10px;padding:13px 15px;font:inherit;
+}
+.search input::placeholder{color:var(--muted)}
+.search input:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-color:var(--green)}
+.search .filter[hidden]{display:none}
 .modal{
   position:fixed;inset:0;z-index:20;display:none;justify-content:center;align-items:flex-start;
   background:#05080dd9;backdrop-filter:blur(6px);padding:24px 14px;overflow-y:auto;
@@ -179,6 +190,11 @@ body.modal-open{overflow:hidden}
     <p>Confira os horários, acompanhe os placares e encontre onde assistir às principais competições do futebol.</p>
   </section>
 
+  <div class="search">
+    <input id="search" type="search" placeholder="Buscar time (ex.: Barcelona, Flamengo)" autocomplete="off" aria-label="Buscar jogos de um time">
+    <button class="filter" id="clearSearch" type="button" hidden>Limpar</button>
+  </div>
+
   <div class="filters" id="filters"></div>
 
   <div class="section-head">
@@ -232,8 +248,10 @@ const PAST_DAYS = 2;     // quantos dias para trás buscar
 const FUTURE_DAYS = 7;   // quantos dias para frente buscar
 const PAGE_SIZE = 60;    // jogos exibidos por vez
 const LIVE_POLL_MS = 1000;      // tempo real (ESPN): jogos ao vivo a cada 1 segundo
-const FD_POLL_MS = 10000;       // tempo real (football-data.org): a cada 10 s, por causa do limite de 10 consultas/min
-const FULL_REFRESH_MS = 30000;  // lista completa (novos jogos, encerrados) a cada 30 segundos
+const FD_POLL_MS = 20000;       // tempo real (football-data.org): a cada 20 s, só se houver jogo ao vivo dela
+const FULL_REFRESH_MS = 60000;  // lista completa (novos jogos, encerrados) a cada 60 segundos
+const FD_WINDOW_CACHE_MS = 15000;           // jogos de hoje (football-data) ficam guardados por 15 s
+const FD_SEASON_CACHE_MS = 15 * 60 * 1000;  // temporada inteira de uma liga fica guardada por 15 min
 
 const leagues = {
   "bra.1":"Brasileirão Série A",
@@ -319,11 +337,30 @@ function timeParts(date) {
   return `<span class="t-date">${esc(day)}</span><span class="t-hour">${esc(hour)}</span>`;
 }
 
+const LATE_AFTER_MS = 3 * 60 * 60 * 1000;   // 3 h depois do horário marcado
+
+// Adiado / cancelado / suspenso (texto da própria fonte) e "já passou e continua sem resultado"
+function lateInfo(event) {
+  const s = event.status?.type || {};
+  const raw = String(s.name || "").toUpperCase();
+  const special =
+    /POSTPONED/.test(raw) ? "ADIADO" :
+    /CANCEL/.test(raw) ? "CANCELADO" :
+    /SUSPEND|ABANDON/.test(raw) ? "SUSPENSO" : "";
+  const start = new Date(event.date).getTime();
+  const past = !Number.isNaN(start) && Date.now() - start > LATE_AFTER_MS;
+  const late = past && !s.completed && s.state !== "in" && (Boolean(special) || s.state === "pre");
+  return {special, late};
+}
+
 function statusText(event) {
   const s = event.status?.type;
   if (s?.state === "in") {
     return {label:"AO VIVO", cls:"live", live:true};
   }
+  const {special, late} = lateInfo(event);
+  if (special) return {label:special, cls:"late", live:false};
+  if (late) return {label:"SEM PLACAR", cls:"late", live:false};
   if (s?.completed || s?.state === "post") {
     return {label:"ENCERRADO", cls:"done", live:false};
   }
@@ -364,7 +401,7 @@ function dynamicParts(event) {
   const home = competitors.find(t => t.homeAway === "home") || competitors[0] || {};
   const away = competitors.find(t => t.homeAway === "away") || competitors[1] || {};
   const state = statusText(event);
-  const scoreAvailable = home.score != null && away.score != null;
+  const scoreAvailable = home.score != null && away.score != null && state.cls !== "late";
   const score = scoreAvailable
     ? `${esc(home.score)} <span style="color:#718096">:</span> ${esc(away.score)}`
     : "×";
@@ -520,34 +557,90 @@ function normalizeFD(m, fallbackCode) {
   };
 }
 
-let fdCache = {key:"", time:0, data:[]};
+// Depois de um erro 429 (limite), para de consultar a football-data por 60 s e usa a ESPN
+let fdBlockedUntil = 0;
+
+async function fdGet(url, ms) {
+  if (Date.now() < fdBlockedUntil) {
+    const error = new Error("HTTP 429");
+    error.status = 429;
+    throw error;
+  }
+  try {
+    return await getJSON(url, ms, fdHeaders());
+  } catch (error) {
+    if (error.status === 429) fdBlockedUntil = Date.now() + 60000;
+    throw error;
+  }
+}
+
+// Janela de datas (todas as ligas numa consulta só). Uma única janela é usada por todo o site,
+// então a lista, o tempo real e a janela "Ver jogo" dividem a mesma consulta.
+const fdCache = {};
 
 async function fetchFootballData(past = PAST_DAYS, future = FUTURE_DAYS) {
   const key = `${past}-${future}`;
-  if (fdCache.key === key && Date.now() - fdCache.time < 8000) return fdCache.data;
+  const old = fdCache[key];
+  if (old?.data && Date.now() - old.time < FD_WINDOW_CACHE_MS) return old.data;
+  if (old?.promise) return old.promise;
+
   const codes = Object.values(FD_CODES).join(",");
   const url = `${FD_BASE}/v4/matches` +
     `?dateFrom=${ymd(dayOffset(-past), "-")}&dateTo=${ymd(dayOffset(future), "-")}&competitions=${codes}`;
-  const data = await getJSON(url, 15000, fdHeaders());
-  const list = (data.matches || []).map(normalizeFD).filter(Boolean);
-  fdCache = {key, time: Date.now(), data: list};
-  return list;
+  const promise = (async () => {
+    try {
+      const data = await fdGet(url, 15000);
+      const list = (data.matches || []).map(m => normalizeFD(m)).filter(Boolean);
+      fdCache[key] = {time: Date.now(), data: list, promise: null};
+      return list;
+    } catch (error) {
+      fdCache[key] = {time: old?.time || 0, data: old?.data, promise: null};
+      throw error;
+    }
+  })();
+  fdCache[key] = {time: old?.time || 0, data: old?.data, promise};
+  return promise;
 }
 
 // Temporada inteira de uma liga (todos os jogos: passados, de hoje e futuros)
-let fdSeasonCache = {};
+const fdSeasonCache = {};
 
 async function fetchFootballDataSeason(code) {
-  const cached = fdSeasonCache[code];
-  if (cached && Date.now() - cached.time < 20000) return cached.data;
-  const data = await getJSON(
-    `${FD_BASE}/v4/competitions/${code}/matches`,
-    20000,
-    fdHeaders()
-  );
-  const list = (data.matches || []).map(m => normalizeFD(m, code)).filter(Boolean);
-  fdSeasonCache[code] = {time: Date.now(), data: list};
-  return list;
+  const old = fdSeasonCache[code];
+  if (old?.data && Date.now() - old.time < FD_SEASON_CACHE_MS) return old.data;
+  if (old?.promise) return old.promise;
+
+  const promise = (async () => {
+    try {
+      const data = await fdGet(`${FD_BASE}/v4/competitions/${code}/matches`, 20000);
+      const list = (data.matches || []).map(m => normalizeFD(m, code)).filter(Boolean);
+      fdSeasonCache[code] = {time: Date.now(), data: list, promise: null};
+      return list;
+    } catch (error) {
+      // se falhar, ainda usa a última cópia boa da temporada
+      if (old?.data) {
+        fdSeasonCache[code] = {time: Date.now() - FD_SEASON_CACHE_MS + 60000, data: old.data, promise: null};
+        return old.data;
+      }
+      fdSeasonCache[code] = {time: 0, data: undefined, promise: null};
+      throw error;
+    }
+  })();
+  fdSeasonCache[code] = {time: old?.time || 0, data: old?.data, promise};
+  return promise;
+}
+
+// Temporada guardada + placares de hoje (a temporada pode estar até 15 min atrasada)
+async function fetchSeasonFresh(code, leagueId) {
+  const list = await fetchFootballDataSeason(code);
+  try {
+    const fresh = await fetchFootballData();
+    const map = new Map(list.map(e => [cardKey(e), e]));
+    fresh.filter(e => e.leagueId === leagueId).forEach(e => map.set(cardKey(e), e));
+    return Array.from(map.values());
+  } catch (error) {
+    return list;
+  }
 }
 
 /* ---------- Aviso da fonte de dados ---------- */
@@ -580,11 +673,15 @@ function showSource({useFD, fd, espnCount}) {
 }
 
 /* ---------- Ordenação ---------- */
-// Ao vivo primeiro, depois os próximos jogos (do mais perto ao mais longe)
-// e por último os encerrados (do mais recente ao mais antigo).
+// Ao vivo primeiro, depois os próximos jogos (do mais perto ao mais longe),
+// depois os encerrados (do mais recente ao mais antigo) e, por último,
+// os que já passaram sem resultado ou foram adiados.
 function rank(event) {
   const t = event.status?.type;
   if (t?.state === "in") return 0;
+  const {special, late} = lateInfo(event);
+  if (late) return 3;       // já passou e não tem resultado (adiado, sem placar)
+  if (special) return 1;    // adiado, mas com data ainda no futuro
   if (t?.completed || t?.state === "post") return 2;
   return 1;
 }
@@ -594,7 +691,7 @@ function sortMatches(list) {
     const ra = rank(a), rb = rank(b);
     if (ra !== rb) return ra - rb;
     const da = new Date(a.date), db = new Date(b.date);
-    return ra === 2 ? db - da : da - db;
+    return ra >= 2 ? db - da : da - db;
   });
 }
 
@@ -605,7 +702,7 @@ function render() {
     html = `<div class="empty">
       ${lastFailures && lastFailures === lastTotal
         ? '<span class="error">Não foi possível carregar os dados esportivos.</span><br>Verifique a conexão ou tente novamente mais tarde.'
-        : 'Nenhuma partida foi encontrada nesta consulta.'}
+        : (searchQuery ? `Nenhum jogo encontrado para "${esc(searchRaw)}".` : 'Nenhuma partida foi encontrada nesta consulta.')}
     </div>`;
   } else {
     html = matches.slice(0, visibleCount).map(event =>
@@ -624,6 +721,7 @@ function render() {
 }
 
 async function loadGames(silent = false) {
+  if (searchQuery) return loadSearch();
   const myRequest = ++requestNumber;
   document.getElementById("sectionTitle").textContent =
     selected === "all" ? "Jogos e horários" : leagues[selected];
@@ -641,7 +739,7 @@ async function loadGames(silent = false) {
   const past = wide ? 300 : PAST_DAYS;
   const future = wide ? 300 : FUTURE_DAYS;
   const fdPromise = useFD
-    ? (wide ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
+    ? (wide ? fetchSeasonFresh(FD_CODES[selected], selected) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
     : Promise.resolve({ok:false, list:[]});
   const espnIds = ids.filter(id => !(useFD && FD_CODES[id]));
   const espnPromise = Promise.allSettled(espnIds.map(id => fetchEspn(id, past, future)));
@@ -692,6 +790,9 @@ async function loadGames(silent = false) {
 filtersEl.addEventListener("click", event => {
   const button = event.target.closest("button[data-league]");
   if (!button) return;
+  if (searchQuery) {
+    searchQuery = ""; searchRaw = ""; searchInput.value = ""; clearSearchBtn.hidden = true;
+  }
   selected = button.dataset.league;
   visibleCount = selected === "all" ? PAGE_SIZE : Infinity;   // liga escolhida: mostra TODOS os jogos
   filtersEl.querySelectorAll(".filter").forEach(b =>
@@ -708,7 +809,10 @@ games.addEventListener("click", event => {
   render();
 });
 
-document.getElementById("refresh").addEventListener("click", () => loadGames());
+document.getElementById("refresh").addEventListener("click", () => {
+  if (searchQuery) fullCache.time = 0;   // força nova busca do calendário completo
+  loadGames();
+});
 
 /* ---------- Tempo real: jogos ao vivo a cada 1 segundo ---------- */
 // Consulta só as competições que têm jogo ao vivo, uma de cada vez (sem sobreposição),
@@ -761,7 +865,7 @@ async function pollLiveFD() {
   const token = requestNumber;
   let reload = false;
   try {
-    const fresh = await fetchFootballData(1, 1);
+    const fresh = await fetchFootballData();
     if (token !== requestNumber) return true;
     fresh.forEach(f => {
       const index = matches.findIndex(m => cardKey(m) === cardKey(f));
@@ -781,6 +885,160 @@ async function fdLoop() {
   const ok = await pollLiveFD();
   setTimeout(fdLoop, ok ? FD_POLL_MS : 30000);
 }
+
+/* ---------- Pesquisa de times: todos os jogos da temporada ---------- */
+const SEARCH_CACHE_MS = 10 * 60 * 1000;   // calendário completo guardado por 10 minutos
+const SEARCH_REFRESH_MS = 20000;          // placares dos times pesquisados: a cada 20 s
+const SEARCH_ALIASES = {
+  "barca":["barcelona"],
+  "psg":["paris saint germain"],
+  "man city":["manchester city"],
+  "man utd":["manchester united"],
+  "man united":["manchester united"]
+};
+
+const searchInput = document.getElementById("search");
+const clearSearchBtn = document.getElementById("clearSearch");
+let searchRaw = "";
+let searchQuery = "";
+let searchTimer = null;
+let fullCache = {time:0, overlay:0, list:[], fdLeagues:new Set(), failures:0, total:0, promise:null};
+
+function normText(value) {
+  return String(value || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function matchesQuery(event, query) {
+  if (event._hay === undefined) {
+    const competitors = event.competitions?.[0]?.competitors || [];
+    event._hay = normText(competitors.map(c =>
+      [c.team?.displayName, c.team?.name, c.team?.shortDisplayName, c.team?.location, c.team?.abbreviation]
+        .filter(Boolean).join(" ")
+    ).join(" "));
+  }
+  const variants = [query, ...(SEARCH_ALIASES[query] || [])];
+  return variants.some(v => v.split(" ").every(t => event._hay.includes(t)));
+}
+
+// Calendário completo (temporada inteira) de todas as competições, pela ESPN (sem limite de consultas
+// da football-data); fica guardado por 10 min
+function loadFullCalendar() {
+  if (fullCache.list.length && Date.now() - fullCache.time < SEARCH_CACHE_MS) return Promise.resolve(fullCache);
+  if (fullCache.promise) return fullCache.promise;
+  const promise = (async () => {
+    const ids = Object.keys(leagues);
+    const fdLeagues = new Set();
+    let failures = 0;
+    const results = await Promise.all(ids.map(async id => {
+      try { return await fetchEspn(id, 300, 300); }
+      catch (error) { failures++; return []; }
+    }));
+    const unique = new Map();
+    results.flat().forEach(event => unique.set(cardKey(event), event));
+    fullCache = {
+      time: Date.now(), overlay: Date.now(), list: Array.from(unique.values()),
+      fdLeagues, failures, total: ids.length, promise: null
+    };
+    return fullCache;
+  })();
+  fullCache.promise = promise;
+  return promise;
+}
+
+// Atualiza placares e horários só das competições que aparecem no resultado
+async function refreshSearchLeagues(ids) {
+  const cache = fullCache;
+  const tasks = ids.map(id => fetchEspn(id, PAST_DAYS, FUTURE_DAYS));
+  const results = await Promise.allSettled(tasks);
+  const map = new Map(cache.list.map(e => [cardKey(e), e]));
+  results.forEach(r => {
+    if (r.status !== "fulfilled") return;
+    r.value.forEach(e => {
+      if (!ids.includes(e.leagueId)) return;
+      map.set(cardKey(e), e);
+    });
+  });
+  cache.list = Array.from(map.values());
+  cache.overlay = Date.now();
+}
+
+async function loadSearch() {
+  const myRequest = ++requestNumber;
+  const query = searchQuery;
+  document.getElementById("sectionTitle").textContent = `Resultados para "${searchRaw}"`;
+
+  const cached = fullCache.list.length && Date.now() - fullCache.time < SEARCH_CACHE_MS;
+  if (!cached) {
+    games.innerHTML = '<div class="loading">Buscando o calendário completo das competições...</div>';
+    lastHTML = "";
+  }
+
+  await loadFullCalendar();
+  if (myRequest !== requestNumber) return;
+
+  const find = () => sortMatches(fullCache.list.filter(e => matchesQuery(e, query)));
+  let found = find();
+  if (found.length && Date.now() - fullCache.overlay > SEARCH_REFRESH_MS) {
+    await refreshSearchLeagues([...new Set(found.map(e => e.leagueId))]);
+    if (myRequest !== requestNumber) return;
+    found = find();
+  }
+
+  matches = found;
+  visibleCount = Infinity;
+  lastFailures = fullCache.failures;
+  lastTotal = fullCache.total;
+  sourceInfo.className = "source " + (fullCache.failures ? "warn" : "ok");
+  sourceInfo.textContent = fullCache.failures
+    ? "Calendário completo · algumas competições não responderam"
+    : "Calendário completo da temporada";
+  render();
+  if (modal) renderModalHead();
+  updated.textContent = `${found.length} jogo(s) encontrado(s) · Última consulta: ` +
+    new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) +
+    " · Horários locais do dispositivo.";
+}
+
+function exitSearch(keepText) {
+  searchQuery = "";
+  searchRaw = "";
+  if (!keepText) searchInput.value = "";
+  clearSearchBtn.hidden = !searchInput.value;
+  renderFilters();
+  visibleCount = selected === "all" ? PAGE_SIZE : Infinity;
+  loadGames();
+}
+
+function applySearch() {
+  clearTimeout(searchTimer);
+  const raw = searchInput.value.trim();
+  const norm = normText(raw);
+  clearSearchBtn.hidden = !searchInput.value;
+  if (norm.length < 2) {
+    if (searchQuery) exitSearch(true);
+    return;
+  }
+  const entering = !searchQuery;
+  searchRaw = raw;
+  searchQuery = norm;
+  if (entering) filtersEl.querySelectorAll(".filter").forEach(b => b.classList.remove("active"));
+  loadGames();
+}
+
+searchInput.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  clearSearchBtn.hidden = !searchInput.value;
+  searchTimer = setTimeout(applySearch, 350);
+});
+searchInput.addEventListener("keydown", event => {
+  if (event.key === "Enter") applySearch();
+});
+clearSearchBtn.addEventListener("click", () => {
+  exitSearch(false);
+  searchInput.focus();
+});
 
 /* ---------- Ver jogo: lances, narração, escalações, estatísticas e transmissão ---------- */
 // Transmissão oficial dentro do site: só funciona com canais que PERMITEM incorporar o vídeo
@@ -1110,7 +1368,7 @@ document.addEventListener("keydown", event => {
 renderFilters();
 loadGames();
 fdLoop();
-setInterval(() => loadGames(true), FULL_REFRESH_MS);
+setInterval(() => { if (!document.hidden) loadGames(true); }, FULL_REFRESH_MS);
 liveLoop();
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) { loadGames(true); }
