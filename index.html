@@ -298,7 +298,8 @@ const fdHeaders = () => FD_PROXY ? {} : {"X-Auth-Token": FOOTBALL_DATA_KEY};
 
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 
-// "Onde assistir": abre o app Futenium 2026 na Play Store (no Android o app da loja mostra "Abrir").
+// "Onde assistir": no Android tenta abrir o app Futenium 2026 direto; se o app não abrir
+// (não instalado ou sem suporte a link), cai na página dele na Play Store. Nos outros aparelhos abre a página da loja.
 const FUTENIUM_PACKAGE = "com.futteniiumm26.app";
 const PAST_DAYS = 2;     // quantos dias para trás buscar
 const FUTURE_DAYS = 7;   // quantos dias para frente buscar
@@ -932,14 +933,16 @@ async function fdLoop() {
   setTimeout(fdLoop, ok ? FD_POLL_MS : 30000);
 }
 
-/* ---------- Onde assistir: abre o Futenium na Play Store ---------- */
+/* ---------- Onde assistir: tenta abrir o app Futenium direto (Android) ---------- */
 const IS_ANDROID = /Android/i.test(navigator.userAgent || "");
 
 games.addEventListener("click", event => {
   const link = event.target.closest("a.watch");
-  if (!link || !IS_ANDROID) return;   // fora do Android: link normal (página da loja)
+  if (!link || !IS_ANDROID) return;      // fora do Android: link normal (página da loja)
   event.preventDefault();
-  window.location.href = `market://details?id=${FUTENIUM_PACKAGE}`;   // abre a Play Store do aparelho
+  window.location.href = "intent://#Intent;action=android.intent.action.MAIN;" +
+    "category=android.intent.category.LAUNCHER;" +
+    `package=${FUTENIUM_PACKAGE};S.browser_fallback_url=${encodeURIComponent(link.href)};end`;
 });
 
 /* ---------- Detalhes do jogo: resumo, escalações e estatísticas (ESPN) ---------- */
@@ -950,7 +953,8 @@ const STAT_NAMES = {
   saves:"Defesas", totalPasses:"Passes", accuratePasses:"Passes certos", passPct:"Precisão de passes",
   totalTackles:"Desarmes", effectiveTackles:"Desarmes certos", interceptions:"Interceptações",
   totalClearance:"Cortes", effectiveClearance:"Cortes certos", totalCrosses:"Cruzamentos",
-  accurateCrosses:"Cruzamentos certos", totalLongBalls:"Bolas longas", accurateLongBalls:"Bolas longas certas"
+  accurateCrosses:"Cruzamentos certos", totalLongBalls:"Bolas longas", accurateLongBalls:"Bolas longas certas",
+  substitutions:"Substituições"
 };
 
 const detailEl = document.getElementById("detail");
@@ -1354,6 +1358,40 @@ function lineupsHTML(data) {
   return legend + field + (subs ? `<div class="lineups" style="margin-top:18px">${subs}</div>` : "");
 }
 
+// Total de substituições já feitas por cada time (a ESPN não manda isso nas estatísticas,
+// então contamos nos lances do jogo)
+function countSubs(data, homeTeam, awayTeam) {
+  const hId = String(homeTeam?.id ?? "");
+  const aId = String(awayTeam?.id ?? "");
+  const hName = norm(homeTeam?.displayName || homeTeam?.name);
+  const aName = norm(awayTeam?.displayName || awayTeam?.name);
+  let h = 0, a = 0;
+
+  const add = (teamId, teamName) => {
+    const id = String(teamId ?? "");
+    if (id && id === hId) { h++; return true; }
+    if (id && id === aId) { a++; return true; }
+    const n = norm(teamName);
+    if (n && similar(n, hName) && !similar(n, aName)) { h++; return true; }
+    if (n && similar(n, aName) && !similar(n, hName)) { a++; return true; }
+    return false;
+  };
+  const nameFromText = text => (String(text || "").match(/^Substitution, (.+?)\./) || [])[1];
+
+  (data.keyEvents || []).forEach(k => {
+    if (!/substitution/i.test(k.type?.text || "")) return;
+    add(k.team?.id, k.team?.displayName || nameFromText(k.text));
+  });
+
+  if (!h && !a) {      // sem lances-chave: tenta a narração
+    (data.commentary || []).forEach(c => {
+      const team = nameFromText(c.text);
+      if (team) add(null, team);
+    });
+  }
+  return {h, a};
+}
+
 function statsHTML(data) {
   const teams = data.boxscore?.teams || [];
   if (teams.length < 2) {
@@ -1366,6 +1404,17 @@ function statsHTML(data) {
 
   const awayStats = Object.fromEntries((away.statistics || []).map(s => [s.name, s]));
   const rows = (home.statistics || []).filter(s => s.displayValue != null && awayStats[s.name]?.displayValue != null);
+
+  // linha extra: substituições feitas (só quando o jogo já começou)
+  const gameState = data.header?.competitions?.[0]?.status?.type?.state;
+  if (gameState !== "pre") {
+    const subs = countSubs(data, home.team, away.team);
+    rows.unshift({
+      name: "substitutions", label: "Substituições", displayValue: String(subs.h),
+      away: {displayValue: String(subs.a)}
+    });
+    awayStats.substitutions = {displayValue: String(subs.a)};
+  }
   if (!rows.length) {
     return `<div class="sheet-note">As estatísticas ainda não estão disponíveis para este jogo.</div>`;
   }
