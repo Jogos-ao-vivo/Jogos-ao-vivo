@@ -2407,11 +2407,33 @@ async function fetchAthlete(id) {
   throw last || new Error("sem dados");
 }
 
+// A ESPN manda altura em pés/polegadas (6' 8") e peso em libras (205 lbs): converte para cm e kg
+function heightCm(a) {
+  const d = String(a.displayHeight || "");
+  let m = d.match(/(\d+)\s*'\s*(\d+)?/);
+  if (m) return Math.round(Number(m[1]) * 30.48 + Number(m[2] || 0) * 2.54);
+  m = d.match(/(\d+(?:[.,]\d+)?)\s*cm/i);
+  if (m) return Math.round(parseFloat(m[1].replace(",", ".")));
+  m = d.match(/(\d+(?:[.,]\d+)?)\s*m\b/i);
+  if (m) return Math.round(parseFloat(m[1].replace(",", ".")) * 100);
+  const h = Number(a.height);
+  return h > 0 ? (h <= 90 ? Math.round(h * 2.54) : Math.round(h)) : null;
+}
+
+function weightKg(a) {
+  const d = String(a.displayWeight || "");
+  let m = d.match(/(\d+(?:[.,]\d+)?)\s*lbs?/i);
+  if (m) return Math.round(parseFloat(m[1].replace(",", ".")) * 0.45359237);
+  m = d.match(/(\d+(?:[.,]\d+)?)\s*kg/i);
+  if (m) return Math.round(parseFloat(m[1].replace(",", ".")));
+  const w = Number(a.weight);
+  return w > 0 ? (w <= 120 ? Math.round(w) : Math.round(w * 0.45359237)) : null;
+}
+
 function athleteInfo(a) {
-  let height = a.displayHeight || "", weight = a.displayWeight || "";
-  const h = Number(a.height), w = Number(a.weight);
-  if (h > 0) { const cm = h <= 90 ? Math.round(h * 2.54) : Math.round(h); height = `${(cm / 100).toFixed(2).replace(".", ",")} m`; }
-  if (w > 0) { weight = `${w <= 120 ? Math.round(w) : Math.round(w * 0.4536)} kg`; }
+  const cm = heightCm(a), kg = weightKg(a);
+  const height = cm ? `${cm} cm` : "";
+  const weight = kg ? `${kg} kg` : "";
   const bp = a.birthPlace || {};
   return {
     fullName: a.fullName || a.displayName || "",
