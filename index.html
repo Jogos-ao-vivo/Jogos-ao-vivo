@@ -70,6 +70,7 @@ h1{font-size:clamp(29px,5vw,48px);line-height:1.12;margin:13px 0}
 }
 .day:first-child{margin-top:0}
 .dwrap{position:relative;display:inline-block}
+.bds .up{color:var(--green);font-size:13px;font-weight:900}
 .bds{
   position:absolute;right:-9px;top:-8px;display:flex;font-size:11px;line-height:1;
   filter:drop-shadow(0 1px 2px #000);white-space:nowrap;
@@ -1906,7 +1907,7 @@ function playerEvents(data) {
   }));
   const map = new Map();
   const get = key => {
-    if (!map.has(key)) map.set(key, {g:0, y:0, r:0, out:"", in:""});
+    if (!map.has(key)) map.set(key, {g:0, y:0, r:0, out:"", in:"", replacedBy:""});
     return map.get(key);
   };
   // o jogador que aparece primeiro no texto é o autor do lance (o assistente vem depois)
@@ -1929,8 +1930,11 @@ function playerEvents(data) {
       if (!m) return;
       const inKey = plainText(m[1]);
       const outKey = plainText(m[2]);
-      if (roster.some(p => p.key === inKey)) get(inKey).in = minute;
-      if (roster.some(p => p.key === outKey)) get(outKey).out = minute;
+      const inRoster = roster.some(p => p.key === inKey);
+      const outRoster = roster.some(p => p.key === outKey);
+      if (inRoster) get(inKey).in = minute;
+      if (outRoster) get(outKey).out = minute;
+      if (inRoster && outRoster) get(outKey).replacedBy = inKey;
       return;
     }
     if (type.includes("own goal")) return;
@@ -1943,13 +1947,13 @@ function playerEvents(data) {
   return map;
 }
 
-function playerBadges(ev, long = false) {
+function playerBadges(ev, long = false, pitch = false) {
   if (!ev) return "";
   let out = "";
   if (ev.g) out += "⚽" + (ev.g > 1 ? ev.g : "");
   if (ev.y) out += "🟨";
   if (ev.r) out += "🟥";
-  if (ev.in) out += long ? `🔼${ev.in}` : "";
+  if (ev.in) out += long ? `🔼${ev.in}` : pitch ? `<span class="up" title="Entrou aos ${esc(ev.in)}">▲</span>` : "";
   if (ev.out) out += long ? `🔻${ev.out}` : "🔻";
   return out;
 }
@@ -1961,14 +1965,30 @@ function pitchPlayers(r, isHome, startIndex, evMap) {
   const out = [];
   let index = startIndex;
 
-  const place = (p, x, y) => {
+  const nameOf = p => p.athlete?.displayName || p.athlete?.fullName || "Jogador";
+  const byKey = new Map(r.roster.map(q => [plainText(nameOf(q)), q]));
+  // quem está em campo agora naquela posição (segue a cadeia de substituições)
+  const currentOf = starter => {
+    let cur = starter;
+    for (let i = 0; i < 6; i++) {
+      const next = byKey.get(evMap?.get(plainText(nameOf(cur)))?.replacedBy);
+      if (!next || next === cur) break;
+      cur = next;
+    }
+    return cur;
+  };
+
+  const place = (starter, x, y) => {
+    const p = currentOf(starter);
     // time de cima ataca para baixo: o lado "esquerdo" dele fica à direita da tela
     const left = isHome ? 100 - x : x;
     const top = isHome ? y : 100 - y;
     const num = p.jersey || p.athlete?.jersey || "";
-    const full = p.athlete?.displayName || p.athlete?.fullName || "Jogador";
-    out.push(`<div class="pp ${isHome ? "h" : "a"}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%;animation-delay:${(index * 0.07).toFixed(2)}s" title="${esc(full)}">
-      <span class="dwrap"><span class="dot">${esc(num)}</span><span class="bds">${playerBadges(evMap?.get(plainText(full)))}</span></span><span class="nm">${esc(shortName(full))}</span></div>`);
+    const full = nameOf(p);
+    const ev = evMap?.get(plainText(full));
+    const tip = p !== starter ? `${full} (entrou no lugar de ${nameOf(starter)})` : full;
+    out.push(`<div class="pp ${isHome ? "h" : "a"}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%;animation-delay:${(index * 0.07).toFixed(2)}s" title="${esc(tip)}">
+      <span class="dwrap"><span class="dot">${esc(num)}</span><span class="bds">${playerBadges(ev, false, true)}</span></span><span class="nm">${esc(shortName(full))}</span></div>`);
     index++;
   };
 
@@ -2028,7 +2048,7 @@ function lineupsHTML(data) {
   };
   const subs = [home, away].filter(Boolean).map(subsOf).join("");
 
-  const key = `<div class="info-line" style="margin-top:10px">⚽ gol · 🟨 amarelo · 🟥 vermelho · 🔻 saiu · 🔼 entrou (minuto)</div>`;
+  const key = `<div class="info-line" style="margin-top:10px">⚽ gol · 🟨 amarelo · 🟥 vermelho · 🔻 saiu · 🔼 entrou (minuto) · <span class="up" style="color:var(--green);font-size:10px">▲</span> em campo: entrou no lugar do titular</div>`;
   return legend + field + key + (subs ? `<div class="lineups" style="margin-top:18px">${subs}</div>` : "");
 }
 
