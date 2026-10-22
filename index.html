@@ -116,6 +116,10 @@ h2{font-size:20px;margin:0}
 .team-name{font-size:13px;font-weight:700;overflow-wrap:anywhere}
 .score{font-size:23px;font-weight:900;white-space:nowrap}
 .mid{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:92px}
+.agg,.pen{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.3px;white-space:nowrap}
+.agg{margin-bottom:5px}
+.pen{margin-top:5px}
+.agg b,.pen b{color:var(--text);font-size:13px}
 .score.goal{color:var(--green);animation:goalFlash 1s ease-in-out 5}
 .score.goal::after{content:" ⚽";font-size:18px}
 @keyframes goalFlash{0%,100%{transform:scale(1);text-shadow:none}50%{transform:scale(1.35);text-shadow:0 0 16px #42e69a}}
@@ -507,7 +511,12 @@ function dynamicParts(event) {
   const score = scoreAvailable
     ? `${esc(home.score)} <span style="color:#718096">:</span> ${esc(away.score)}`
     : "×";
-  const mid = `<div class="score">${score}</div>
+  const agg = aggregateOf(event);
+  const aggHTML = agg ? `<div class="agg">Agregado <b>${esc(agg.home)} : ${esc(agg.away)}</b></div>` : "";
+  const hasPens = home.shootoutScore != null && away.shootoutScore != null;
+  const penHTML = hasPens
+    ? `<div class="pen">Pênaltis <b>${esc(home.shootoutScore)} : ${esc(away.shootoutScore)}</b></div>` : "";
+  const mid = `${aggHTML}<div class="score">${score}</div>${penHTML}
         <div class="time ${state.cls}">${state.live ? liveParts(event) : timeParts(event.date)}</div>`;
   const scoreKey = scoreAvailable ? `${home.score}-${away.score}` : "none";
   return {home, away, state, mid, scoreKey};
@@ -577,6 +586,39 @@ function legByPairing(event, maxDays) {
     }
   });
   return earlier ? "Jogo de volta" : later ? "Jogo de ida" : "";
+}
+
+// Jogo de ida do mesmo confronto (mesmos times, mandos invertidos, até 30 dias antes)
+function firstLegOf(event) {
+  const t = new Date(event.date).getTime();
+  if (!Number.isFinite(t)) return null;
+  const {home, away} = competitorsOf(event);
+  const name = c => norm(c.team?.displayName || c.team?.name);
+  const a = name(home), b = name(away);
+  let best = null, bestTime = 0;
+  knownGames(event.leagueId).forEach(o => {
+    if (cardKey(o) === cardKey(event)) return;
+    const ot = new Date(o.date).getTime();
+    if (!Number.isFinite(ot) || ot >= t || t - ot > 30 * 86400000) return;
+    const x = competitorsOf(o);
+    if (similar(name(x.home), b) && similar(name(x.away), a) && ot > bestTime) { best = o; bestTime = ot; }
+  });
+  return best;
+}
+
+// Agregado (ida + volta) para mostrar em cima do placar do jogo de volta
+function aggregateOf(event) {
+  if (stageOf(event).leg !== "Jogo de volta") return null;
+  const {home, away} = competitorsOf(event);
+  if (home.aggregateScore != null && away.aggregateScore != null) {
+    return {home: home.aggregateScore, away: away.aggregateScore};
+  }
+  const first = firstLegOf(event);
+  if (!first || !(first.status?.type?.completed || first.status?.type?.state === "post")) return null;
+  const f = competitorsOf(first);
+  if (f.home.score == null || f.away.score == null) return null;
+  const n = v => Number(v) || 0;
+  return {home: n(home.score) + n(f.away.score), away: n(away.score) + n(f.home.score)};
 }
 
 function stageOf(event, extraText = "") {
@@ -749,7 +791,21 @@ function normalizeFD(m, fallbackCode) {
   const period = live && st !== "PAUSED" && minute != null ? (minute > 45 ? 2 : 1) : undefined;
 
   const ft = m.score?.fullTime || {};
-  const hasScore = state !== "pre" && ft.home != null && ft.away != null;
+  const pen = m.score?.penalties || {};
+  const hasPen = pen.home != null && pen.away != null;
+  let scoreHome = ft.home, scoreAway = ft.away;
+  if (hasPen && scoreHome != null && scoreAway != null) {
+    // o placar total da football-data.org soma os pênaltis: volta ao placar do jogo (90 min + prorrogação)
+    const reg = m.score?.regularTime, ext = m.score?.extraTime;
+    if (reg && reg.home != null && reg.away != null) {
+      scoreHome = reg.home + (ext?.home || 0);
+      scoreAway = reg.away + (ext?.away || 0);
+    } else {
+      scoreHome -= pen.home;
+      scoreAway -= pen.away;
+    }
+  }
+  const hasScore = state !== "pre" && scoreHome != null && scoreAway != null;
   const teamOf = t => ({displayName: t?.shortName || t?.name, logo: t?.crest || ""});
 
   return {
@@ -770,8 +826,8 @@ function normalizeFD(m, fallbackCode) {
     },
     competitions: [{
       competitors: [
-        {homeAway:"home", score: hasScore ? ft.home : null, team: teamOf(m.homeTeam)},
-        {homeAway:"away", score: hasScore ? ft.away : null, team: teamOf(m.awayTeam)}
+        {homeAway:"home", score: hasScore ? scoreHome : null, shootoutScore: hasPen ? pen.home : null, team: teamOf(m.homeTeam)},
+        {homeAway:"away", score: hasScore ? scoreAway : null, shootoutScore: hasPen ? pen.away : null, team: teamOf(m.awayTeam)}
       ]
     }],
     links: []
@@ -869,7 +925,8 @@ function mergeOverlay(fdEvent, espnEvent) {
     competitions: [{
       competitors: fdEvent.competitions[0].competitors.map(c => ({
         ...c,
-        score: hasScore ? (c.homeAway === "home" ? e.home.score : e.away.score) : null
+        score: hasScore ? (c.homeAway === "home" ? e.home.score : e.away.score) : null,
+        shootoutScore: (c.homeAway === "home" ? e.home.shootoutScore : e.away.shootoutScore) ?? c.shootoutScore
       }))
     }]
   };
@@ -977,6 +1034,25 @@ function render() {
   games.innerHTML = html;
 }
 
+// Em mata-mata, busca o calendário da competição uma vez para achar o jogo de ida (agregado)
+const seasonRequested = {};
+
+function ensureFirstLegs(list) {
+  const needed = new Set();
+  list.forEach(e => { if (!seasonRequested[e.leagueId] && stageOf(e).stage) needed.add(e.leagueId); });
+  needed.forEach(id => {
+    seasonRequested[id] = true;
+    const viaFD = FD_ENABLED && FD_CODES[id];
+    const load = viaFD
+      ? fetchFootballDataSeason(FD_CODES[id]).catch(() => fetchEspnWide(id, 600000))
+      : fetchEspnWide(id, 600000);
+    load.then(
+      () => { lastHTML = ""; render(); },
+      () => { setTimeout(() => { delete seasonRequested[id]; }, 60000); }
+    );
+  });
+}
+
 async function loadGames(silent = false) {
   const myRequest = ++requestNumber;
   const teamMode = Boolean(teamQuery);
@@ -1058,6 +1134,7 @@ async function loadGames(silent = false) {
   lastTotal = total;
   render();
   renderTeamChips();
+  ensureFirstLegs(matches);
 
   updated.textContent = "Última consulta: " +
     new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) +
