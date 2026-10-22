@@ -1067,15 +1067,15 @@ async function loadGames(silent = false) {
   const ids = (selected === "all" || teamMode) ? Object.keys(leagues) : [selected];
   const useFD = FD_ENABLED && ids.some(id => FD_CODES[id]);
 
-  const wide = selected !== "all" && !teamMode;
-  const past = wide ? 300 : PAST_DAYS;
-  const future = wide ? 300 : FUTURE_DAYS;
+  // Modificado: Sempre utiliza football-data (quando aplicável) e ESPN juntas para todas as ligas (inclusive Champions League)
+  const past = PAST_DAYS;
+  const future = FUTURE_DAYS;
   const fdPromise = useFD
-    ? (wide ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
+    ? fetchFootballData(past, future).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
     : Promise.resolve({ok:false, list:[]});
-  const espnIds = teamMode ? ids : ids.filter(id => !(useFD && FD_CODES[id]));
-  const espnPromise = Promise.allSettled(espnIds.map(id =>
-    teamMode ? fetchEspnWide(id, 120000) : fetchEspn(id, past, future)));
+  
+  const espnIds = teamMode ? ids : ids;
+  const espnPromise = Promise.allSettled(espnIds.map(id => fetchEspn(id, past, future)));
   const [fd, espnResults] = await Promise.all([fdPromise, espnPromise]);
   if (myRequest !== requestNumber) return;
 
