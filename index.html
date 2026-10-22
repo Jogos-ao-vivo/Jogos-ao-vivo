@@ -210,6 +210,24 @@ button.btn.details{border:1px solid var(--line)}
 .lu h3{margin:0 0 3px;font-size:15px}
 .lu .sub{color:var(--muted);font-size:12px;margin-bottom:6px}
 .lu h4{margin:14px 0 4px;font-size:11px;color:var(--muted);letter-spacing:1px}
+.pl[data-aid]{cursor:pointer}
+.pl[data-aid]:hover .nm{color:var(--green)}
+.pp:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:10px}
+#player .sheet{max-width:440px}
+.pm-head{display:flex;gap:14px;align-items:center;padding:0 42px 14px 0}
+.ph{position:relative;flex:none;width:84px;height:84px;border-radius:50%;overflow:hidden;background:var(--panel2);border:2px solid var(--line)}
+.ph img{position:relative;display:block;width:100%;height:100%;object-fit:cover;object-position:top}
+.ph .fb{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:var(--green)}
+.ph.nophoto .fb{display:flex}
+.pm-name{font-size:19px;font-weight:900;line-height:1.2;overflow-wrap:anywhere}
+.pm-sub{color:var(--muted);font-size:13px;margin-top:4px}
+.pm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pm-item{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.pm-item .k{font-size:11px;color:var(--muted);margin-bottom:3px}
+.pm-item .v{font-size:15px;font-weight:800;overflow-wrap:anywhere}
+.pm-sec{margin:18px 0 8px;font-size:11px;color:var(--muted);letter-spacing:1px;font-weight:700}
+.pm-chips{display:flex;flex-wrap:wrap;gap:8px}
+.pm-chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700}
 .pl{display:flex;gap:9px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
 .pl .n{min-width:24px;color:var(--green);font-weight:800;text-align:right}
 .pl .nm{min-width:0;overflow-wrap:anywhere}
@@ -250,7 +268,7 @@ button.btn.details{border:1px solid var(--line)}
 .p-six.top{top:0;border-top:0!important}
 .p-six.bot{bottom:0;border-bottom:0!important}
 .pp{
-  position:absolute;transform:translate(-50%,-50%);width:64px;
+  cursor:pointer;position:absolute;transform:translate(-50%,-50%);width:64px;
   display:flex;flex-direction:column;align-items:center;gap:3px;
   animation:ppIn .6s cubic-bezier(.2,.9,.3,1.3) both;
 }
@@ -337,6 +355,16 @@ button.btn.details{border:1px solid var(--line)}
       <button class="filter tab" type="button" data-tab="forma">Últimos jogos</button>
     </div>
     <div class="sheet-body" id="detailBody"></div>
+  </div>
+</div>
+
+<div class="modal" id="player" role="dialog" aria-modal="true" aria-label="Dados do jogador">
+  <div class="sheet">
+    <div class="sheet-head">
+      <button class="close" type="button" aria-label="Fechar">✕</button>
+      <div id="playerHead"></div>
+    </div>
+    <div class="sheet-body" id="playerBody"></div>
   </div>
 </div>
 
@@ -1987,7 +2015,7 @@ function pitchPlayers(r, isHome, startIndex, evMap) {
     const full = nameOf(p);
     const ev = evMap?.get(plainText(full));
     const tip = p !== starter ? `${full} (entrou no lugar de ${nameOf(starter)})` : full;
-    out.push(`<div class="pp ${isHome ? "h" : "a"}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%;animation-delay:${(index * 0.07).toFixed(2)}s" title="${esc(tip)}">
+    out.push(`<div class="pp ${isHome ? "h" : "a"}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%;animation-delay:${(index * 0.07).toFixed(2)}s" title="${esc(tip)}" data-aid="${esc(p.athlete?.id ?? "")}" data-nm="${esc(plainText(full))}" role="button" tabindex="0">
       <span class="dwrap"><span class="dot">${esc(num)}</span><span class="bds">${playerBadges(ev, false, true)}</span></span><span class="nm">${esc(shortName(full))}</span></div>`);
     index++;
   };
@@ -2010,7 +2038,7 @@ function lineupsHTML(data) {
   const player = p => {
     const full = p.athlete?.displayName || p.athlete?.fullName || "Jogador";
     const badges = playerBadges(evMapAll.get(plainText(full)), true);
-    return `<div class="pl">
+    return `<div class="pl" data-aid="${esc(p.athlete?.id ?? "")}" data-nm="${esc(plainText(full))}">
       <span class="n">${esc(p.jersey || p.athlete?.jersey || "")}</span>
       <span class="nm">${esc(full)}</span>
       ${badges ? `<span class="pb">${badges}</span>` : ""}
@@ -2282,6 +2310,7 @@ function openDetail(key) {
 }
 
 function closeDetail() {
+  closePlayer();
   clearInterval(detailTimer);
   detailTimer = null;
   detail = {key:null, event:null, tab:"resumo", data:null, state:"idle"};
@@ -2312,7 +2341,198 @@ detailEl.addEventListener("click", event => {
 });
 
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape" && detailEl.classList.contains("open")) closeDetail();
+  if (event.key !== "Escape") return;
+  if (playerEl.classList.contains("open")) closePlayer();
+  else if (detailEl.classList.contains("open")) closeDetail();
+});
+
+/* ---------- Dados do jogador (toque no jogador do campo ou da lista de reservas) ---------- */
+const playerEl = document.getElementById("player");
+const playerHead = document.getElementById("playerHead");
+const playerBody = document.getElementById("playerBody");
+let playerView = {key:null, p:null, r:null, info:null, state:"idle"};
+let playerOpener = null;
+const athleteCache = {};
+
+const PLAYER_STAT_PT = [
+  ["totalGoals", "Gols"], ["goalAssists", "Assistências"], ["totalShots", "Finalizações"],
+  ["shotsOnTarget", "Chutes no gol"], ["foulsCommitted", "Faltas cometidas"], ["foulsSuffered", "Faltas sofridas"],
+  ["offsides", "Impedimentos"], ["saves", "Defesas"], ["shotsFaced", "Chutes sofridos"],
+  ["goalsConceded", "Gols sofridos"], ["ownGoals", "Gols contra"],
+  ["yellowCards", "Cartões amarelos"], ["redCards", "Cartões vermelhos"]
+];
+
+const athleteShort = p => p.athlete?.displayName || p.athlete?.fullName || "Jogador";
+
+function findRosterPlayer(aid, nm) {
+  for (const r of detail.data?.rosters || []) {
+    for (const p of r.roster || []) {
+      if (aid ? String(p.athlete?.id) === aid : plainText(athleteShort(p)) === nm) return {p, r};
+    }
+  }
+  return null;
+}
+
+function ageFrom(dob) {
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getUTCFullYear() - d.getUTCFullYear();
+  const m = now.getUTCMonth() - d.getUTCMonth();
+  if (m < 0 || (m === 0 && now.getUTCDate() < d.getUTCDate())) age--;
+  return age >= 0 && age < 70 ? age : null;
+}
+
+function fmtDate(dob) {
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("pt-BR", {day:"2-digit", month:"2-digit", year:"numeric", timeZone:"UTC"}).format(d);
+}
+
+// Dados pessoais vêm da ESPN (se ela tiver o cadastro do jogador)
+async function fetchAthlete(id) {
+  if (athleteCache[id]) return athleteCache[id];
+  const urls = [
+    `https://site.web.api.espn.com/apis/common/v3/sports/soccer/athletes/${encodeURIComponent(id)}`,
+    `https://sports.core.api.espn.com/v2/sports/soccer/athletes/${encodeURIComponent(id)}`
+  ];
+  let last;
+  for (const url of urls) {
+    try {
+      const data = await getJSON(url, 10000);
+      const a = data.athlete || data;
+      if (a && (a.fullName || a.displayName || a.dateOfBirth || a.age)) { athleteCache[id] = a; return a; }
+    } catch (error) { last = error; }
+  }
+  throw last || new Error("sem dados");
+}
+
+function athleteInfo(a) {
+  let height = a.displayHeight || "", weight = a.displayWeight || "";
+  const h = Number(a.height), w = Number(a.weight);
+  if (h > 0) { const cm = h <= 90 ? Math.round(h * 2.54) : Math.round(h); height = `${(cm / 100).toFixed(2).replace(".", ",")} m`; }
+  if (w > 0) { weight = `${w <= 120 ? Math.round(w) : Math.round(w * 0.4536)} kg`; }
+  const bp = a.birthPlace || {};
+  return {
+    fullName: a.fullName || a.displayName || "",
+    dob: a.dateOfBirth || "",
+    age: a.age != null ? Number(a.age) : (a.dateOfBirth ? ageFrom(a.dateOfBirth) : null),
+    nationality: a.citizenship || a.flag?.alt || bp.country || "",
+    height, weight,
+    birthPlace: [bp.city, bp.country].filter(Boolean).join(", "),
+    headshot: a.headshot?.href || ""
+  };
+}
+
+function renderPlayer() {
+  const v = playerView;
+  if (!v.p) return;
+  const p = v.p, info = v.info || {};
+  const id = p.athlete?.id;
+  const shown = athleteShort(p);
+  const full = info.fullName || p.athlete?.fullName || shown;
+  const num = p.jersey || p.athlete?.jersey || "";
+  const pos = positionLabel(p.position?.abbreviation);
+  const team = v.r?.team?.displayName || v.r?.team?.name || "";
+  const photo = info.headshot || p.athlete?.headshot?.href ||
+    (id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${id}.png` : "");
+
+  const head = `<div class="pm-head">
+      <div class="ph${photo ? "" : " nophoto"}"><span class="fb">${esc(num || shown.slice(0, 1))}</span>${photo
+        ? `<img src="${esc(photo)}" alt="" onerror="this.parentNode.classList.add('nophoto');this.remove()">` : ""}</div>
+      <div><div class="pm-name">${esc(full)}</div>
+        <div class="pm-sub">${[num ? "#" + num : "", pos, team].filter(Boolean).map(esc).join(" · ")}</div></div>
+    </div>`;
+  if (playerHead.dataset.html !== head) { playerHead.dataset.html = head; playerHead.innerHTML = head; }
+
+  const items = [];
+  const add = (k, val) => { if (val) items.push(`<div class="pm-item"><div class="k">${k}</div><div class="v">${esc(val)}</div></div>`); };
+  add("Nome completo", full);
+  add("Idade", info.age != null ? `${info.age} anos` : "");
+  add("Nascimento", info.dob ? fmtDate(info.dob) : "");
+  add("Nacionalidade", info.nationality);
+  add("Altura", info.height);
+  add("Peso", info.weight);
+  add("Naturalidade", info.birthPlace);
+  add("Posição", pos);
+  add("Camisa", num);
+
+  let note = "";
+  if (v.state === "loading") note = `<div class="info-line">Buscando idade e dados pessoais...</div>`;
+  else if (v.state === "error") note = `<div class="info-line">Idade e outros dados pessoais não estão disponíveis agora.</div>`;
+
+  // lances do jogo (gols, cartões, substituição) e estatísticas do jogador na partida
+  const ev = playerEvents(detail.data || {}).get(plainText(shown));
+  const chips = [];
+  if (ev?.g) chips.push(`⚽ ${ev.g} gol${ev.g > 1 ? "s" : ""}`);
+  if (ev?.y) chips.push("🟨 cartão amarelo");
+  if (ev?.r) chips.push("🟥 cartão vermelho");
+  if (ev?.in) chips.push(`▲ entrou aos ${ev.in}`);
+  if (ev?.out) chips.push(`🔻 saiu aos ${ev.out}`);
+
+  const raw = {};
+  (Array.isArray(p.stats) ? p.stats : []).forEach(st => { if (st?.name) raw[st.name] = st.displayValue ?? st.value; });
+  const statBoxes = PLAYER_STAT_PT
+    .filter(([name]) => raw[name] != null && raw[name] !== "")
+    .map(([name, label]) => `<div class="pm-item"><div class="k">${label}</div><div class="v">${esc(raw[name])}</div></div>`);
+
+  const html = note +
+    `<div class="pm-grid">${items.join("")}</div>` +
+    (chips.length ? `<div class="pm-sec">LANCES NO JOGO</div><div class="pm-chips">${chips.map(c => `<span class="pm-chip">${esc(c)}</span>`).join("")}</div>` : "") +
+    (statBoxes.length ? `<div class="pm-sec">ESTATÍSTICAS NO JOGO</div><div class="pm-grid">${statBoxes.join("")}</div>` : "");
+  if (playerBody.dataset.html !== html) { playerBody.dataset.html = html; playerBody.innerHTML = html; }
+}
+
+async function openPlayer(aid, nm) {
+  const found = findRosterPlayer(aid, nm);
+  if (!found) return;
+  const key = `${aid}|${nm}`;
+  const cached = aid ? athleteCache[aid] : null;
+  playerView = {key, p: found.p, r: found.r, info: cached ? athleteInfo(cached) : null, state: cached ? "ok" : (aid ? "loading" : "error")};
+  playerHead.dataset.html = "";
+  playerBody.dataset.html = "";
+  playerBody.scrollTop = 0;
+  playerOpener = document.activeElement;
+  playerEl.classList.add("open");
+  document.body.style.overflow = "hidden";
+  renderPlayer();
+  playerEl.querySelector(".close").focus();
+
+  if (cached || !aid) return;
+  try {
+    const a = await fetchAthlete(aid);
+    if (playerView.key !== key) return;
+    playerView.info = athleteInfo(a);
+    playerView.state = "ok";
+  } catch (error) {
+    if (playerView.key !== key) return;
+    playerView.state = "error";
+  }
+  renderPlayer();
+}
+
+function closePlayer() {
+  if (!playerEl.classList.contains("open")) return;
+  playerEl.classList.remove("open");
+  playerView = {key:null, p:null, r:null, info:null, state:"idle"};
+  if (!detailEl.classList.contains("open")) document.body.style.overflow = "";
+  if (playerOpener && document.contains(playerOpener)) playerOpener.focus();
+  playerOpener = null;
+}
+
+detailBody.addEventListener("click", event => {
+  const el = event.target.closest(".pp, .pl[data-aid]");
+  if (el) openPlayer(el.dataset.aid || "", el.dataset.nm || "");
+});
+detailBody.addEventListener("keydown", event => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const el = event.target.closest(".pp");
+  if (!el) return;
+  event.preventDefault();
+  openPlayer(el.dataset.aid || "", el.dataset.nm || "");
+});
+playerEl.addEventListener("click", event => {
+  if (event.target === playerEl || event.target.closest(".close")) closePlayer();
 });
 
 renderFilters();
