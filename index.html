@@ -835,7 +835,7 @@ function normalizeFD(m, fallbackCode) {
     }
   }
   const hasScore = state !== "pre" && scoreHome != null && scoreAway != null;
-  const teamOf = t => ({displayName: t?.shortName || t?.name, logo: t?.crest || ""});
+  const teamOf = t => ({displayName: t?.shortName || t?.name, name: t?.name, abbreviation: t?.tla, logo: t?.crest || ""});
 
   return {
     id: "fd-" + m.id,
@@ -1094,8 +1094,8 @@ async function loadGames(silent = false) {
   }
 
   const ids = (selected === "all" || teamMode) ? Object.keys(leagues) : [selected];
-  // na pesquisa de time usa só a ESPN (a football-data.org limita as consultas por minuto)
-  const useFD = !teamMode && FD_ENABLED && ids.some(id => FD_CODES[id]);
+  // na pesquisa de time: ESPN (calendário inteiro) + football-data.org (1 consulta só, para poupar o limite)
+  const useFD = FD_ENABLED && ids.some(id => FD_CODES[id]);
 
   // football-data.org para as ligas dela; ESPN para as demais
   const wide = selected !== "all" && !teamMode;  // liga escolhida: calendário inteiro
@@ -1104,7 +1104,7 @@ async function loadGames(silent = false) {
   const fdPromise = useFD
     ? (wide ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
     : Promise.resolve({ok:false, list:[]});
-  const espnIds = ids.filter(id => !(useFD && FD_CODES[id]));
+  const espnIds = teamMode ? ids : ids.filter(id => !(useFD && FD_CODES[id]));
   const espnPromise = Promise.allSettled(espnIds.map(id =>
     teamMode ? fetchEspnWide(id, 120000) : fetchEspn(id, past, future)));
   const [fd, espnResults] = await Promise.all([fdPromise, espnPromise]);
@@ -1112,7 +1112,7 @@ async function loadGames(silent = false) {
 
   // Se a football-data falhar, as ligas dela voltam para a ESPN
   let fallbackResults = [];
-  if (useFD && !fd.ok) {
+  if (useFD && !fd.ok && !teamMode) {
     const fallbackIds = ids.filter(id => FD_CODES[id]);
     fallbackResults = await Promise.allSettled(fallbackIds.map(id => fetchEspn(id, past, future)));
     if (myRequest !== requestNumber) return;
@@ -1128,7 +1128,9 @@ async function loadGames(silent = false) {
     r.value.forEach(event => unique.set(cardKey(event), event));
   });
   if (fd.ok) {
+    const espnList = teamMode ? Array.from(unique.values()) : [];
     fd.list.filter(event => ids.includes(event.leagueId))
+      .filter(event => !teamMode || !espnList.some(e => sameGame(e, event)))
       .forEach(event => unique.set(cardKey(event), event));
   }
   let all = Array.from(unique.values()).map(e => e.source === "fd" ? applyOverlay(e) : e);
@@ -1304,9 +1306,27 @@ function teamNames(competitor) {
   return [t.displayName, t.shortDisplayName, t.name, t.location, t.abbreviation].map(norm).filter(Boolean);
 }
 
+// Apelidos comuns: o que a pessoa digita -> nome usado pelas fontes
+const TEAM_ALIASES = {
+  barca:"barcelona", barcelona:"barca", bayern:"bayernmunich", psg:"parissaintgermain",
+  inter:"internazionale", milan:"acmilan", juve:"juventus", atletico:"atleticomadrid",
+  manutd:"manchesterunited", mancity:"manchestercity", spurs:"tottenham", galo:"atleticomineiro",
+  mengao:"flamengo", timao:"corinthians", verdao:"palmeiras", tricolor:"saopaulo"
+};
+
 function matchesTeam(event) {
   const {home, away} = competitorsOf(event);
-  return [home, away].some(c => teamNames(c).some(n => n.includes(teamQuery)));
+  const terms = [teamQuery, TEAM_ALIASES[teamQuery]].filter(Boolean);
+  return [home, away].some(c => teamNames(c).some(n => terms.some(t => n.includes(t))));
+}
+
+// Mesmo jogo vindo da ESPN e da football-data.org (evita repetir na pesquisa de time)
+function sameGame(a, b) {
+  if (a.leagueId !== b.leagueId) return false;
+  if (Math.abs(new Date(a.date) - new Date(b.date)) > 3 * 3600000) return false;
+  const x = competitorsOf(a), y = competitorsOf(b);
+  return teamNames(x.home).some(n => teamNames(y.home).some(m => similar(n, m))) &&
+         teamNames(x.away).some(n => teamNames(y.away).some(m => similar(n, m)));
 }
 
 // Se o texto bate com mais de um time (ex.: "Real"), mostra botões para escolher o certo
@@ -1318,7 +1338,8 @@ function renderTeamChips() {
       const {home, away} = competitorsOf(event);
       [home, away].forEach(c => {
         const name = c.team?.displayName || c.team?.name;
-        if (name && teamNames(c).some(n => n.includes(teamQuery))) found.set(norm(name), name);
+        const terms = [teamQuery, TEAM_ALIASES[teamQuery]].filter(Boolean);
+        if (name && teamNames(c).some(n => terms.some(t => n.includes(t)))) found.set(norm(name), name);
       });
     });
     if (found.size > 1 && found.size <= 12) {
