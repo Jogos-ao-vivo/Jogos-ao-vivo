@@ -45,6 +45,14 @@ header{
 .eyebrow{color:var(--green);font-size:12px;font-weight:800;letter-spacing:2px}
 h1{font-size:clamp(29px,5vw,48px);line-height:1.12;margin:13px 0}
 .hero p{color:var(--muted);max-width:580px;line-height:1.7}
+.search{margin-top:22px}
+.search input{
+  width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);
+  border-radius:12px;padding:14px 16px;font:inherit;font-size:16px;outline:none;
+}
+.search input:focus{border-color:var(--green)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chips:not(:empty){margin-top:12px}
 .filters{display:flex;gap:9px;overflow:auto;padding:20px 0}
 .filter{
   white-space:nowrap;background:var(--panel);color:var(--text);
@@ -245,6 +253,12 @@ button.btn.details{border:1px solid var(--line)}
     <p>Confira os horários, acompanhe os placares e encontre onde assistir às principais competições do futebol.</p>
   </section>
 
+  <div class="search">
+    <input id="teamSearch" type="search" placeholder="🔎 Pesquisar time (ex.: Flamengo, Real Madrid)"
+      autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" aria-label="Pesquisar time">
+  </div>
+  <div class="chips" id="teamChips"></div>
+
   <div class="filters" id="filters"></div>
 
   <div class="section-head">
@@ -343,6 +357,8 @@ const FD_CODES = {
 const FD_LEAGUE_BY_CODE = Object.fromEntries(Object.entries(FD_CODES).map(([id, code]) => [code, id]));
 
 let selected = "all";
+let teamQuery = "";    // pesquisa de time (texto normalizado)
+let teamLabel = "";    // o que a pessoa digitou
 let matches = [];
 let visibleCount = PAGE_SIZE;
 let requestNumber = 0;
@@ -367,7 +383,7 @@ function esc(value) {
 function renderFilters() {
   const items = [["all","Todos"], ...Object.entries(leagues)];
   filtersEl.innerHTML = items.map(([id, name]) =>
-    `<button class="filter${id === selected ? " active" : ""}" data-league="${esc(id)}">${esc(name)}</button>`
+    `<button class="filter${!teamQuery && id === selected ? " active" : ""}" data-league="${esc(id)}">${esc(name)}</button>`
   ).join("");
 }
 
@@ -566,6 +582,25 @@ async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
   }
 }
 
+// Calendário inteiro de uma competição (usado na pesquisa de time), com cache curto
+const espnWideCache = {};
+
+async function fetchEspnWide(id, ttl) {
+  const cached = espnWideCache[id];
+  if (cached && Date.now() - cached.time < ttl) return cached.data;
+  const data = await fetchEspn(id, 300, 300);
+  espnWideCache[id] = {time: Date.now(), data};
+  return data;
+}
+
+// Mantém o cache em dia com o placar em tempo real
+function syncWideCache(fresh) {
+  const cached = espnWideCache[fresh.leagueId];
+  if (!cached) return;
+  const index = cached.data.findIndex(e => cardKey(e) === cardKey(fresh));
+  if (index >= 0) cached.data[index] = fresh;
+}
+
 // football-data.org: uma única consulta traz as partidas de todas as ligas
 function normalizeFD(m, fallbackCode) {
   const leagueId = FD_LEAGUE_BY_CODE[m.competition?.code || fallbackCode];
@@ -742,7 +777,9 @@ function render() {
     html = `<div class="empty">
       ${lastFailures && lastFailures === lastTotal
         ? '<span class="error">Não foi possível carregar os dados esportivos.</span><br>Verifique a conexão ou tente novamente mais tarde.'
-        : 'Nenhuma partida foi encontrada nesta consulta.'}
+        : teamQuery
+          ? `Nenhum jogo encontrado para “${esc(teamLabel)}”.<br>Confira o nome do time ou tente outra grafia.`
+          : 'Nenhuma partida foi encontrada nesta consulta.'}
     </div>`;
   } else {
     html = matches.slice(0, visibleCount).map(event =>
@@ -762,26 +799,29 @@ function render() {
 
 async function loadGames(silent = false) {
   const myRequest = ++requestNumber;
+  const teamMode = Boolean(teamQuery);
   document.getElementById("sectionTitle").textContent =
-    selected === "all" ? "Jogos e horários" : leagues[selected];
+    teamMode ? `Jogos: ${teamLabel}` : selected === "all" ? "Jogos e horários" : leagues[selected];
 
   if (!silent || !matches.length) {
     games.innerHTML = '<div class="loading">Buscando calendários e placares...</div>';
     lastHTML = "";
   }
 
-  const ids = selected === "all" ? Object.keys(leagues) : [selected];
-  const useFD = FD_ENABLED && ids.some(id => FD_CODES[id]);
+  const ids = (selected === "all" || teamMode) ? Object.keys(leagues) : [selected];
+  // na pesquisa de time usa só a ESPN (a football-data.org limita as consultas por minuto)
+  const useFD = !teamMode && FD_ENABLED && ids.some(id => FD_CODES[id]);
 
   // football-data.org para as ligas dela; ESPN para as demais
-  const wide = selected !== "all";               // liga escolhida: calendário inteiro
+  const wide = selected !== "all" && !teamMode;  // liga escolhida: calendário inteiro
   const past = wide ? 300 : PAST_DAYS;
   const future = wide ? 300 : FUTURE_DAYS;
   const fdPromise = useFD
     ? (wide ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
     : Promise.resolve({ok:false, list:[]});
   const espnIds = ids.filter(id => !(useFD && FD_CODES[id]));
-  const espnPromise = Promise.allSettled(espnIds.map(id => fetchEspn(id, past, future)));
+  const espnPromise = Promise.allSettled(espnIds.map(id =>
+    teamMode ? fetchEspnWide(id, 120000) : fetchEspn(id, past, future)));
   const [fd, espnResults] = await Promise.all([fdPromise, espnPromise]);
   if (myRequest !== requestNumber) return;
 
@@ -806,7 +846,8 @@ async function loadGames(silent = false) {
     fd.list.filter(event => ids.includes(event.leagueId))
       .forEach(event => unique.set(cardKey(event), event));
   }
-  const all = Array.from(unique.values()).map(e => e.source === "fd" ? applyOverlay(e) : e);
+  let all = Array.from(unique.values()).map(e => e.source === "fd" ? applyOverlay(e) : e);
+  if (teamMode) all = all.filter(matchesTeam);
 
   // Falha total numa atualização automática: mantém o que já estava na tela
   if (!all.length && total > 0 && failures === total && matches.length && silent) {
@@ -819,15 +860,101 @@ async function loadGames(silent = false) {
   lastFailures = failures;
   lastTotal = total;
   render();
+  renderTeamChips();
 
   updated.textContent = "Última consulta: " +
     new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) +
     " · Horários locais do dispositivo.";
 }
 
+/* ---------- Pesquisa de time: todos os jogos dele em todas as competições ---------- */
+const teamInput = document.getElementById("teamSearch");
+const teamChipsEl = document.getElementById("teamChips");
+
+function teamNames(competitor) {
+  const t = competitor?.team || {};
+  return [t.displayName, t.shortDisplayName, t.name, t.location, t.abbreviation].map(norm).filter(Boolean);
+}
+
+function matchesTeam(event) {
+  const {home, away} = competitorsOf(event);
+  return [home, away].some(c => teamNames(c).some(n => n.includes(teamQuery)));
+}
+
+// Se o texto bate com mais de um time (ex.: "Real"), mostra botões para escolher o certo
+function renderTeamChips() {
+  let html = "";
+  if (teamQuery) {
+    const found = new Map();
+    matches.forEach(event => {
+      const {home, away} = competitorsOf(event);
+      [home, away].forEach(c => {
+        const name = c.team?.displayName || c.team?.name;
+        if (name && teamNames(c).some(n => n.includes(teamQuery))) found.set(norm(name), name);
+      });
+    });
+    if (found.size > 1 && found.size <= 12) {
+      html = [...found.entries()].sort((a, b) => a[1].localeCompare(b[1], "pt-BR")).map(([key, name]) =>
+        `<button class="filter${key === teamQuery ? " active" : ""}" data-team="${esc(name)}">${esc(name)}</button>`
+      ).join("");
+    }
+  }
+  if (teamChipsEl.dataset.html !== html) {
+    teamChipsEl.dataset.html = html;
+    teamChipsEl.innerHTML = html;
+  }
+}
+
+function applyTeamSearch(raw) {
+  const text = String(raw || "").trim();
+  const q = norm(text);
+  if (q.length < 3) {                      // texto curto ou vazio: volta à lista normal
+    if (!teamQuery) return;
+    teamQuery = "";
+    teamLabel = "";
+    selected = "all";
+    visibleCount = PAGE_SIZE;
+    renderFilters();
+    renderTeamChips();
+    loadGames();
+    return;
+  }
+  if (q === teamQuery) return;
+  teamQuery = q;
+  teamLabel = text;
+  selected = "all";
+  visibleCount = Infinity;                 // mostra todos os jogos do time
+  renderFilters();
+  loadGames();
+}
+
+let teamTimer = null;
+teamInput.addEventListener("input", () => {
+  clearTimeout(teamTimer);
+  teamTimer = setTimeout(() => applyTeamSearch(teamInput.value), 450);
+});
+teamInput.addEventListener("keydown", event => {
+  if (event.key !== "Enter") return;
+  clearTimeout(teamTimer);
+  applyTeamSearch(teamInput.value);
+  teamInput.blur();
+});
+teamChipsEl.addEventListener("click", event => {
+  const chip = event.target.closest("button[data-team]");
+  if (!chip) return;
+  teamInput.value = chip.dataset.team;
+  applyTeamSearch(chip.dataset.team);
+});
+
 filtersEl.addEventListener("click", event => {
   const button = event.target.closest("button[data-league]");
   if (!button) return;
+  if (teamQuery) {                         // escolher uma liga encerra a pesquisa de time
+    teamQuery = "";
+    teamLabel = "";
+    teamInput.value = "";
+    renderTeamChips();
+  }
   selected = button.dataset.league;
   visibleCount = selected === "all" ? PAGE_SIZE : Infinity;   // liga escolhida: mostra TODOS os jogos
   filtersEl.querySelectorAll(".filter").forEach(b =>
@@ -874,6 +1001,7 @@ async function pollLive() {
         if (index >= 0) {                            // jogo vindo da própria ESPN
           if (rank(matches[index]) !== rank(fresh)) needsFullReload = true; // começou/terminou
           matches[index] = fresh;
+          syncWideCache(fresh);
           updateCard(fresh);
           return;
         }
