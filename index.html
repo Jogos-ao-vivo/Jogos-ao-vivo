@@ -53,6 +53,7 @@ h1{font-size:clamp(29px,5vw,48px);line-height:1.12;margin:13px 0}
 .search input:focus{border-color:var(--green)}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chips:not(:empty){margin-top:12px}
+.league{min-width:0;line-height:1.35}
 .filters{display:flex;gap:9px;overflow:auto;padding:20px 0}
 .filter{
   white-space:nowrap;background:var(--panel);color:var(--text);
@@ -469,6 +470,92 @@ function cardKey(event) {
   return `${event.leagueId}-${event.id}`;
 }
 
+/* ---------- Fase do mata-mata ao lado do nome da competição ---------- */
+// Ex.: "Libertadores · Semifinal · Jogo de ida"
+const STAGE_RULES = [
+  [/semi/, "Semifinal"],
+  [/quarter|quartas/, "Quartas de final"],
+  [/round of 16|last 16|eighth|oitavas/, "Oitavas de final"],
+  [/round of 32|last 32|16 avos|dezesseis avos/, "16 avos de final"],
+  [/third place|3rd place|terceiro lugar|3o lugar/, "Disputa do 3º lugar"],
+  [/play ?offs?/, "Playoffs"],
+  [/\bfinals?\b/, "Final"]
+];
+
+const plainText = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/[^a-z0-9]+/g, " ").trim();
+
+// Junta os textos que a ESPN / football-data.org mandam sobre a fase e a partida (ida/volta)
+function stageTextOf(event) {
+  const parts = [];
+  const push = v => { if (typeof v === "string" && v) parts.push(v); };
+  const c = event.competitions?.[0] || {};
+  [...(c.notes || []), ...(event.notes || [])].forEach(n => { push(n.headline); push(n.text); push(n.shortText); });
+  push(event.stage);
+  push(c.leg?.displayValue);
+  if (c.leg?.value) parts.push(`leg ${c.leg.value}`);
+  push(c.round?.name);
+  push(event.round?.name);
+  push(event.group?.name);
+  push(event.season?.type?.name);
+  const slug = String(event.season?.slug || "");
+  if (/^(round|semi|quarter|final|last|play)/i.test(slug)) parts.push(slug);
+  return parts.join(" | ");
+}
+
+function knownGames(leagueId) {
+  const map = new Map();
+  matches.forEach(e => { if (e.leagueId === leagueId) map.set(cardKey(e), e); });
+  (espnWideCache[leagueId]?.data || []).forEach(e => map.set(cardKey(e), e));
+  Object.values(fdSeasonCache).forEach(cache =>
+    cache.data.forEach(e => { if (e.leagueId === leagueId) map.set(cardKey(e), e); }));
+  return [...map.values()];
+}
+
+// Se a fonte não diz ida/volta, descobre pelo confronto de volta (mesmos times, mandos invertidos)
+function legByPairing(event, maxDays) {
+  const t = new Date(event.date).getTime();
+  if (!Number.isFinite(t)) return "";
+  const {home, away} = competitorsOf(event);
+  const name = c => norm(c.team?.displayName || c.team?.name);
+  const a = name(home), b = name(away);
+  let earlier = false, later = false;
+  knownGames(event.leagueId).forEach(o => {
+    if (cardKey(o) === cardKey(event)) return;
+    const ot = new Date(o.date).getTime();
+    if (!Number.isFinite(ot) || Math.abs(ot - t) > maxDays * 86400000) return;
+    const x = competitorsOf(o);
+    if (similar(name(x.home), b) && similar(name(x.away), a)) {
+      if (ot < t) earlier = true; else later = true;
+    }
+  });
+  return earlier ? "Jogo de volta" : later ? "Jogo de ida" : "";
+}
+
+function stageOf(event, extraText = "") {
+  const text = plainText(stageTextOf(event) + " | " + extraText);
+  let stage = "";
+  for (const [regex, label] of STAGE_RULES) {
+    if (regex.test(text)) { stage = label; break; }
+  }
+  let leg = "";
+  if (/\b(1st|first)\b ?leg|\bleg 1\b|\bida\b/.test(text)) leg = "Jogo de ida";
+  else if (/\b(2nd|second)\b ?leg|\bleg 2\b|\bvolta\b/.test(text)) leg = "Jogo de volta";
+
+  const single = stage === "Final" || stage === "Disputa do 3º lugar";
+  if (stage && !leg && !single) leg = legByPairing(event, 30);
+  if (!stage && !leg) {                      // fase desconhecida, mas é confronto de ida e volta
+    leg = legByPairing(event, 14);
+    if (leg) stage = "Mata-mata";
+  }
+  return {stage, leg: single ? "" : leg};
+}
+
+function leagueTitle(event, leagueName, extraText = "") {
+  const {stage, leg} = stageOf(event, extraText);
+  return [leagueName, stage, leg].filter(Boolean).join(" · ");
+}
+
 function card(event, leagueName) {
   const {home, away, state, mid, scoreKey} = dynamicParts(event);
   const h = home.team || {};
@@ -480,7 +567,7 @@ function card(event, leagueName) {
 
   return `<article class="match" data-key="${esc(cardKey(event))}" data-score="${esc(scoreKey)}">
     <div class="match-top">
-      <div class="league">${esc(leagueName)}</div>
+      <div class="league">${esc(leagueTitle(event, leagueName))}</div>
       <div class="status ${state.cls}">${esc(state.label)}</div>
     </div>
     <div class="teams">
@@ -621,6 +708,7 @@ function normalizeFD(m, fallbackCode) {
     id: "fd-" + m.id,
     leagueId,
     source: "fd",
+    stage: m.stage,
     date: m.utcDate,
     status: {
       type: {
@@ -1085,6 +1173,24 @@ const STAT_NAMES = {
   substitutions:"Substituições"
 };
 
+const LABEL_PT = {
+  "possession":"Posse de bola", "shots":"Finalizações", "total shots":"Finalizações",
+  "shots on target":"Finalizações no gol", "on target":"Finalizações no gol", "blocked shots":"Finalizações bloqueadas",
+  "fouls":"Faltas", "fouls committed":"Faltas", "fouls suffered":"Faltas sofridas",
+  "corner kicks":"Escanteios", "corners":"Escanteios", "won corners":"Escanteios", "saves":"Defesas",
+  "offsides":"Impedimentos", "yellow cards":"Cartões amarelos", "red cards":"Cartões vermelhos",
+  "pass completion %":"Precisão de passes", "pass completion":"Precisão de passes", "passes":"Passes",
+  "accurate passes":"Passes certos", "tackles":"Desarmes", "tackle %":"Aproveitamento de desarmes",
+  "clearances":"Cortes", "interceptions":"Interceptações", "crosses":"Cruzamentos",
+  "accurate crosses":"Cruzamentos certos", "long balls":"Bolas longas", "accurate long balls":"Bolas longas certas",
+  "shot assists":"Passes para finalização", "goals":"Gols", "assists":"Assistências", "own goals":"Gols contra",
+  "shot %":"Precisão de finalizações", "penalty kick goals":"Gols de pênalti", "penalty kick shots":"Pênaltis cobrados",
+  "substitutions":"Substituições"
+};
+function statLabel(s) {
+  return STAT_NAMES[s.name] || LABEL_PT[String(s.label || "").toLowerCase()] || s.label || s.name;
+}
+
 const detailEl = document.getElementById("detail");
 const detailHead = document.getElementById("detailHead");
 const detailTabs = document.getElementById("detailTabs");
@@ -1101,6 +1207,8 @@ function detailEvent() {
 
 function eventIcon(text) {
   const t = String(text || "").toLowerCase();
+  if (t.includes("start delay") || t.includes("delay in match")) return "⏸️";
+  if (t.includes("end delay") || t.includes("delay over")) return "▶️";
   if (t.includes("own goal") || t.includes("goal") || t.includes("scored")) return "⚽";
   if (t.includes("yellow")) return "🟨";
   if (t.includes("red card")) return "🟥";
@@ -1112,8 +1220,19 @@ function eventIcon(text) {
   return "•";
 }
 
+const TYPE_PT = {
+  "foul":"Falta", "throw in":"Lateral", "throw-in":"Lateral", "corner kick":"Escanteio", "corner":"Escanteio",
+  "free kick":"Falta", "free kick taken":"Cobrança de falta", "offside":"Impedimento", "save":"Defesa",
+  "shot on target":"Finalização no gol", "shot off target":"Finalização para fora", "shot blocked":"Finalização bloqueada",
+  "shot":"Finalização", "goal kick":"Tiro de meta", "hand ball":"Mão na bola", "handball":"Mão na bola",
+  "penalty":"Pênalti", "attempt missed":"Finalização para fora", "attempt saved":"Finalização defendida",
+  "attempt blocked":"Finalização bloqueada", "injury":"Lesão", "match ends":"Fim de jogo", "match begins":"Início do jogo"
+};
+
 function eventLabel(text) {
   const t = String(text || "").toLowerCase();
+  if (/start delay|delay in match/.test(t)) return "Jogo parado";
+  if (/end delay|delay over/.test(t)) return "Jogo reiniciado";
   if (t.includes("own goal")) return "Gol contra";
   if (t.includes("penalty") && t.includes("scored")) return "Gol de pênalti";
   if (t.includes("penalty") && t.includes("saved")) return "Pênalti defendido";
@@ -1135,11 +1254,64 @@ function eventLabel(text) {
   if (t.includes("extra time") || t.includes("overtime")) return "Prorrogação";
   if (t.includes("shootout")) return "Disputa de pênaltis";
   if (t.includes("var")) return "VAR";
-  return text || "";
+  return TYPE_PT[t.trim()] || translateText(text) || "";
 }
 
 // Traduz o texto dos lances (a ESPN envia em inglês). Nomes de times e jogadores ficam como estão.
+const DELAY_REASONS = {
+  "a drinks break":"para pausa de hidratação", "drinks break":"para pausa de hidratação",
+  "a cooling break":"para pausa de hidratação", "an injury":"por lesão",
+  "a var check":"para checagem do VAR", "a var review":"para revisão do VAR",
+  "a var decision":"para decisão do VAR", "var":"para checagem do VAR",
+  "crowd trouble":"por problemas na torcida", "a pitch invader":"por invasão de campo",
+  "a floodlight failure":"por falha na iluminação", "bad weather":"por mau tempo"
+};
+const CARD_REASONS = {
+  "a bad foul":"falta dura", "a rough tackle":"entrada dura", "a bad tackle":"entrada dura",
+  "unsporting behaviour":"conduta antidesportiva", "unsporting behavior":"conduta antidesportiva",
+  "dissent":"reclamação", "time wasting":"cera", "a foul":"falta", "persistent fouling":"faltas repetidas",
+  "a handball":"mão na bola", "a dangerous play":"jogo perigoso", "a professional foul":"falta tática",
+  "a tactical foul":"falta tática", "diving":"simulação", "simulation":"simulação",
+  "violent conduct":"conduta violenta", "a serious foul":"falta grave", "a late challenge":"entrada atrasada",
+  "delaying the restart":"demora na reposição", "excessive celebration":"comemoração excessiva",
+  "denying a goalscoring opportunity":"impedir uma chance clara de gol"
+};
+const PASS_KINDS = {
+  "through ball":"um passe em profundidade", "pass":"um passe", "cross":"um cruzamento",
+  "long ball":"um lançamento", "lofted pass":"um passe por cobertura"
+};
 const PT_RULES = [
+  [/Delay over\. (.+?) (?:are|is) ready to continue\./g, (m, who) => who === "They"
+    ? "Jogo reiniciado. Os times estão prontos para continuar."
+    : `Jogo reiniciado. ${who} está pronto para continuar.`],
+  [/Delay over\./g, "Jogo reiniciado."],
+  [/Delay in match because of an injury to (.+?) \((.+?)\)\./g, "Jogo parado por lesão de $1 ($2)."],
+  [/Delay in match (?:for|because of) (.+?)\./g, (m, why) => {
+    const reason = DELAY_REASONS[why.toLowerCase()];
+    return "Jogo parado" + (reason ? " " + reason : "") + ".";
+  }],
+  [/Substitution, (.+?)\. (.+?) replaces (.+?) because of an injury\./g,
+    "Substituição, $1. $2 entra no lugar de $3, por lesão."],
+  [/Penalty conceded by (.+?) \((.+?)\) with a (foul|handball) in the penalty (?:area|box)\./g,
+    (m, p, t, kind) => `Pênalti cometido por ${p} (${t}) com ${kind === "foul" ? "uma falta" : "um toque de mão"} na área.`],
+  [/Offside, (.+?)\. (.+?) (?:tries|attempts) a (through ball|pass|cross|long ball|lofted pass), but (.+?) is caught offside\./g,
+    (m, team, p, kind, q) => `Impedimento, ${team}. ${p} tenta ${PASS_KINDS[kind]}, mas ${q} está impedido.`],
+  [/(.+?) \((.+?)\) is shown the second yellow card(?: for (.+?))?\./g, (m, p, t, why) =>
+    `${p} (${t}) recebe o segundo cartão amarelo` + (why ? " por " + (CARD_REASONS[why.toLowerCase()] || "infração") : "") + "."],
+  [/(.+?) \((.+?)\) is shown the yellow card for (.+?)\./g, (m, p, t, why) =>
+    `${p} (${t}) recebe cartão amarelo por ${CARD_REASONS[why.toLowerCase()] || "infração"}.`],
+  [/(.+?) \((.+?)\) is shown the red card for (.+?)\./g, (m, p, t, why) =>
+    `${p} (${t}) recebe cartão vermelho por ${CARD_REASONS[why.toLowerCase()] || "infração"}.`],
+  [/VAR Decision:/g, "Decisão do VAR:"],
+  [/Goal (?:cancelled|disallowed)/gi, "Gol anulado"],
+  [/Goal confirmed/gi, "Gol confirmado"],
+  [/is saved in the (top|bottom) (left|right) corner/g, (m, v, h) =>
+    `é defendido no canto ${v === "top" ? "superior" : "inferior"} ${h === "left" ? "esquerdo" : "direito"}`],
+  [/is saved in the centre of the goal/g, "é defendido no meio do gol"],
+  [/is saved/g, "é defendido"],
+  [/is blocked/g, "é bloqueado"],
+  [/is just a bit too high/g, "passa um pouco por cima"],
+  [/is very close/g, "passa muito perto"],
   [/Goal!/g, "Gol!"],
   [/Own Goal by (.+?), (.+?)\./g, "Gol contra de $1, $2."],
   [/Penalty (saved|missed)!?/gi, (m, w) => w.toLowerCase() === "saved" ? "Pênalti defendido!" : "Pênalti perdido!"],
@@ -1165,13 +1337,7 @@ const PT_RULES = [
   [/Offside, (.+?)\. (.+?) is caught offside\./g, "Impedimento, $1. $2 está impedido."],
   [/Offside, /g, "Impedimento, "],
   [/Delay in match (.+?) \((.+?)\) because of an injury\./g, "Jogo parado: $1 ($2) está com lesão."],
-  [/Delay over\. (.+?) are ready to continue\./g, "Jogo reiniciado. $1 está pronto para continuar."],
   [/Delay in match/g, "Jogo parado"],
-  [/(.+?) \((.+?)\) is shown the yellow card for (a bad foul|a rough tackle|unsporting behaviou?r|dissent|time wasting|a foul|persistent fouling)\./g,
-    (m, p, t, why) => `${p} (${t}) recebe cartão amarelo por ` + ({
-      "a bad foul":"falta dura", "a rough tackle":"entrada dura", "dissent":"reclamação",
-      "time wasting":"cera", "a foul":"falta", "persistent fouling":"faltas repetidas"
-    }[why] || "conduta antidesportiva") + "."],
   [/(.+?) \((.+?)\) is shown the red card/g, "$1 ($2) recebe cartão vermelho"],
   [/(.+?) \((.+?)\) is shown the yellow card/g, "$1 ($2) recebe cartão amarelo"],
   [/Attempt missed\./g, "Finalização para fora."],
@@ -1301,7 +1467,11 @@ function renderDetailHead() {
   const h = home.team || {};
   const a = away.team || {};
   const leagueName = event.leagueName || leagues[event.leagueId] || event.leagueId;
-  const html = `<div class="dh-league">${esc(leagueName)} · ${esc(state.label)}</div>
+  const summaryHeader = detail.data?.header;
+  const extra = summaryHeader
+    ? stageTextOf({competitions: summaryHeader.competitions, season: summaryHeader.season})
+    : "";
+  const html = `<div class="dh-league">${esc(leagueTitle(event, leagueName, extra))} · ${esc(state.label)}</div>
     <div class="teams">
       ${teamHTML({name:h.displayName || h.name || "Time da casa", logo:h.logo})}
       <div class="mid">${mid}</div>
@@ -1559,7 +1729,7 @@ function statsHTML(data) {
       : "";
     return `<div class="stat">
       <div class="stat-row"><span>${esc(s.displayValue)}</span>
-        <span class="lbl">${esc(STAT_NAMES[s.name] || s.label || s.name)}</span>
+        <span class="lbl">${esc(statLabel(s))}</span>
         <span class="r">${esc(a.displayValue)}</span></div>
       ${bar}
     </div>`;
