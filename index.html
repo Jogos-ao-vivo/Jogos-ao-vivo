@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -137,7 +136,7 @@ h2{font-size:20px;margin:0}
 .btn{
   display:flex;align-items:center;justify-content:center;
   text-decoration:none;text-align:center;padding:10px 8px;
-  border-radius:9px;font-size:12px;font-weight:800;flex:1;
+  border-radius:99px;font-size:12px;font-weight:800;flex:1;
 }
 .watch{background:var(--green);color:#06140d}
 .details{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
@@ -352,7 +351,6 @@ button.btn.details{border:1px solid var(--line)}
       <button class="filter tab active" type="button" data-tab="resumo">Resumo</button>
       <button class="filter tab" type="button" data-tab="escalacoes">Escalações</button>
       <button class="filter tab" type="button" data-tab="estatisticas">Estatísticas</button>
-      <button class="filter tab" type="button" data-tab="forma">Últimos jogos</button>
     </div>
     <div class="sheet-body" id="detailBody"></div>
   </div>
@@ -377,14 +375,7 @@ button.btn.details{border:1px solid var(--line)}
 
 <script>
 // ===== football-data.org =====
-// 1) Crie uma conta grátis em https://www.football-data.org/client/register
-// 2) Cole abaixo a chave (API token) que chega no seu e-mail.
-// Sem a chave, o site usa só a ESPN, como antes.
-const FOOTBALL_DATA_KEY = "";   // não é necessária: a chave fica guardada no Worker
-
-// Se o navegador bloquear a football-data.org, use um servidor intermediário (Cloudflare Worker):
-// cole aqui o endereço do seu Worker, por exemplo "https://futplay-api.seunome.workers.dev".
-// Com o Worker, a chave fica guardada no servidor e pode ser apagada daqui.
+const FOOTBALL_DATA_KEY = "";
 const FD_PROXY = "https://futplay-api.brunosamuel1524.workers.dev";
 const FD_BASE = FD_PROXY ? FD_PROXY.replace(/\/+$/, "") : "https://api.football-data.org";
 const FD_ENABLED = Boolean(FD_PROXY || FOOTBALL_DATA_KEY);
@@ -392,17 +383,15 @@ const fdHeaders = () => FD_PROXY ? {} : {"X-Auth-Token": FOOTBALL_DATA_KEY};
 
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 
-// "Onde assistir": no Android tenta abrir o app Futenium 2026 direto; se o app não abrir
-// (não instalado ou sem suporte a link), cai na página dele na Play Store. Nos outros aparelhos abre a página da loja.
 const FUTENIUM_PACKAGE = "com.futteniiumm26.app";
-const PAST_DAYS = 2;     // quantos dias para trás buscar
-const FUTURE_DAYS = 7;   // quantos dias para frente buscar
-const PAGE_SIZE = 60;    // jogos exibidos por vez
-const LIVE_POLL_MS = 1000;      // tempo real (ESPN): jogos ao vivo a cada 1 segundo
-const FD_POLL_MS = 10000;       // tempo real (football-data.org): a cada 10 s, por causa do limite de 10 consultas/min
-const OVERLAY_MS = 20000;       // quanto tempo o placar da ESPN vale sobre o da football-data.org (que atrasa)
-const OVERLAY_END_MS = 600000;  // jogo encerrado pela ESPN: vale por 10 minutos
-const FULL_REFRESH_MS = 30000;  // lista completa (novos jogos, encerrados) a cada 30 segundos
+const PAST_DAYS = 2;
+const FUTURE_DAYS = 7;
+const PAGE_SIZE = 60;
+const LIVE_POLL_MS = 1000;
+const FD_POLL_MS = 10000;
+const OVERLAY_MS = 20000;
+const OVERLAY_END_MS = 600000;
+const FULL_REFRESH_MS = 30000;
 
 const leagues = {
   "bra.1":"Brasileirão Série A",
@@ -422,7 +411,6 @@ const leagues = {
   "fifa.worldq.conmebol":"Eliminatórias Sul-Americanas"
 };
 
-// Ligas que a football-data.org cobre no plano grátis (id da liga -> código deles)
 const FD_CODES = {
   "bra.1":"BSA",
   "uefa.champions":"CL",
@@ -437,9 +425,9 @@ const FD_CODES = {
 const FD_LEAGUE_BY_CODE = Object.fromEntries(Object.entries(FD_CODES).map(([id, code]) => [code, id]));
 
 let selected = "all";
-let dayFilter = "all";   // all | live | yesterday | today | tomorrow
-let teamQuery = "";    // pesquisa de time (texto normalizado)
-let teamLabel = "";    // o que a pessoa digitou
+let dayFilter = "all";
+let teamQuery = "";
+let teamLabel = "";
 let matches = [];
 let visibleCount = PAGE_SIZE;
 let requestNumber = 0;
@@ -555,8 +543,7 @@ function cardKey(event) {
   return `${event.leagueId}-${event.id}`;
 }
 
-/* ---------- Fase do mata-mata ao lado do nome da competição ---------- */
-// Ex.: "Libertadores · Semifinal · Jogo de ida"
+/* ---------- Fase do mata-mata ---------- */
 const STAGE_RULES = [
   [/semi/, "Semifinal"],
   [/quarter|quartas/, "Quartas de final"],
@@ -570,7 +557,6 @@ const STAGE_RULES = [
 const plainText = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .replace(/[^a-z0-9]+/g, " ").trim();
 
-// Junta os textos que a ESPN / football-data.org mandam sobre a fase e a partida (ida/volta)
 function stageTextOf(event) {
   const parts = [];
   const push = v => { if (typeof v === "string" && v) parts.push(v); };
@@ -597,7 +583,6 @@ function knownGames(leagueId) {
   return [...map.values()];
 }
 
-// Se a fonte não diz ida/volta, descobre pelo confronto de volta (mesmos times, mandos invertidos)
 function legByPairing(event, maxDays) {
   const t = new Date(event.date).getTime();
   if (!Number.isFinite(t)) return "";
@@ -617,7 +602,6 @@ function legByPairing(event, maxDays) {
   return earlier ? "Jogo de volta" : later ? "Jogo de ida" : "";
 }
 
-// Jogo de ida do mesmo confronto (mesmos times, mandos invertidos, até 30 dias antes)
 function firstLegOf(event) {
   const t = new Date(event.date).getTime();
   if (!Number.isFinite(t)) return null;
@@ -635,7 +619,6 @@ function firstLegOf(event) {
   return best;
 }
 
-// Agregado (ida + volta) para mostrar em cima do placar do jogo de volta
 function aggregateOf(event) {
   if (stageOf(event).leg !== "Jogo de volta") return null;
   const {home, away} = competitorsOf(event);
@@ -662,7 +645,7 @@ function stageOf(event, extraText = "") {
 
   const single = stage === "Final" || stage === "Disputa do 3º lugar";
   if (stage && !leg && !single) leg = legByPairing(event, 30);
-  if (!stage && !leg) {                      // fase desconhecida, mas é confronto de ida e volta
+  if (!stage && !leg) {
     leg = legByPairing(event, 14);
     if (leg) stage = "Mata-mata";
   }
@@ -702,7 +685,6 @@ function card(event, leagueName) {
   </article>`;
 }
 
-// Atualiza só o placar, o status e o tempo de um cartão (sem recriar logos)
 function updateCard(event) {
   const el = games.querySelector(`[data-key="${cardKey(event)}"]`);
   if (!el) return;
@@ -715,7 +697,6 @@ function updateCard(event) {
   st.textContent = state.label;
   el.querySelector(".mid").innerHTML = mid;
 
-  // Gol: o placar pisca em verde por alguns segundos
   const goals = k => String(k).split("-").reduce((sum, n) => sum + (Number(n) || 0), 0);
   const previous = el.dataset.score;
   el.dataset.score = scoreKey;
@@ -760,8 +741,6 @@ async function getJSON(url, ms = 15000, headers = {}) {
   }
 }
 
-// ESPN: uma consulta por competição. Tenta o intervalo de datas e, se a ESPN
-// recusar ou devolver vazio, volta para a consulta simples (jogos do dia).
 let rangeSupported = true;
 
 async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
@@ -782,13 +761,11 @@ async function fetchEspn(id, past = PAST_DAYS, future = FUTURE_DAYS) {
     const data = await getJSON(base);
     return tag(data.events);
   } catch (error) {
-    // Competição inexistente/sem calendário não conta como falha
     if (error.status >= 400 && error.status < 500) return [];
     throw error;
   }
 }
 
-// Calendário inteiro de uma competição (usado na pesquisa de time), com cache curto
 const espnWideCache = {};
 
 async function fetchEspnWide(id, ttl) {
@@ -799,7 +776,6 @@ async function fetchEspnWide(id, ttl) {
   return data;
 }
 
-// Mantém o cache em dia com o placar em tempo real
 function syncWideCache(fresh) {
   const cached = espnWideCache[fresh.leagueId];
   if (!cached) return;
@@ -807,7 +783,6 @@ function syncWideCache(fresh) {
   if (index >= 0) cached.data[index] = fresh;
 }
 
-// football-data.org: uma única consulta traz as partidas de todas as ligas
 function normalizeFD(m, fallbackCode) {
   const leagueId = FD_LEAGUE_BY_CODE[m.competition?.code || fallbackCode];
   if (!leagueId || m.status === "CANCELLED") return null;
@@ -824,7 +799,6 @@ function normalizeFD(m, fallbackCode) {
   const hasPen = pen.home != null && pen.away != null;
   let scoreHome = ft.home, scoreAway = ft.away;
   if (hasPen && scoreHome != null && scoreAway != null) {
-    // o placar total da football-data.org soma os pênaltis: volta ao placar do jogo (90 min + prorrogação)
     const reg = m.score?.regularTime, ext = m.score?.extraTime;
     if (reg && reg.home != null && reg.away != null) {
       scoreHome = reg.home + (ext?.home || 0);
@@ -877,7 +851,6 @@ async function fetchFootballData(past = PAST_DAYS, future = FUTURE_DAYS) {
   return list;
 }
 
-// Temporada inteira de uma liga (todos os jogos: passados, de hoje e futuros)
 let fdSeasonCache = {};
 
 async function fetchFootballDataSeason(code) {
@@ -922,12 +895,14 @@ function showSource({useFD, fd, espnCount}) {
   sourceInfo.textContent = text;
 }
 
-/* ---------- Placar mais rápido: ESPN por cima da football-data.org ---------- */
-// O plano grátis da football-data.org atrasa os placares. Nos jogos ao vivo,
-// o placar e o tempo vêm da ESPN, que atualiza mais rápido.
+/* ---------- Placar mais rápido ---------- */
 const norm = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .toLowerCase().replace(/[^a-z0-9]/g, "");
-const similar = (a, b) => a && b && (a.includes(b) || b.includes(a) || a.slice(0, 4) === b.slice(0, 4));
+const similar = (a, b) => {
+  if (!a || !b) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  return false;
+};
 
 function competitorsOf(event) {
   const c = event.competitions?.[0]?.competitors || [];
@@ -974,8 +949,6 @@ function applyOverlay(event) {
 }
 
 /* ---------- Ordenação ---------- */
-// Ao vivo primeiro, depois os próximos jogos (do mais perto ao mais longe)
-// e por último os encerrados (do mais recente ao mais antigo).
 function rank(event) {
   const t = event.status?.type;
   if (t?.state === "in") return 0;
@@ -993,7 +966,6 @@ function sortMatches(list) {
 }
 
 /* ---------- Tela ---------- */
-/* ---------- Filtro por dia e agrupamento ---------- */
 const dayKey = date => {
   const d = new Date(date);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -1063,7 +1035,6 @@ function render() {
   games.innerHTML = html;
 }
 
-// Em mata-mata, busca o calendário da competição uma vez para achar o jogo de ida (agregado)
 const seasonRequested = {};
 
 function ensureFirstLegs(list) {
@@ -1094,11 +1065,9 @@ async function loadGames(silent = false) {
   }
 
   const ids = (selected === "all" || teamMode) ? Object.keys(leagues) : [selected];
-  // na pesquisa de time: ESPN (calendário inteiro) + football-data.org (1 consulta só, para poupar o limite)
   const useFD = FD_ENABLED && ids.some(id => FD_CODES[id]);
 
-  // football-data.org para as ligas dela; ESPN para as demais
-  const wide = selected !== "all" && !teamMode;  // liga escolhida: calendário inteiro
+  const wide = selected !== "all" && !teamMode;
   const past = wide ? 300 : PAST_DAYS;
   const future = wide ? 300 : FUTURE_DAYS;
   const fdPromise = useFD
@@ -1110,7 +1079,6 @@ async function loadGames(silent = false) {
   const [fd, espnResults] = await Promise.all([fdPromise, espnPromise]);
   if (myRequest !== requestNumber) return;
 
-  // Se a football-data falhar, as ligas dela voltam para a ESPN
   let fallbackResults = [];
   if (useFD && !fd.ok && !teamMode) {
     const fallbackIds = ids.filter(id => FD_CODES[id]);
@@ -1136,7 +1104,6 @@ async function loadGames(silent = false) {
   let all = Array.from(unique.values()).map(e => e.source === "fd" ? applyOverlay(e) : e);
   if (teamMode) all = all.filter(matchesTeam);
 
-  // Sem internet na primeira consulta: mostra a última lista salva neste aparelho
   if (!all.length && total > 0 && failures === total && !matches.length && !teamMode && selected === "all") {
     const snap = readSnapshot();
     if (snap) {
@@ -1152,7 +1119,6 @@ async function loadGames(silent = false) {
     }
   }
 
-  // Falha total numa atualização automática: mantém o que já estava na tela
   if (!all.length && total > 0 && failures === total && matches.length && silent) {
     updated.textContent = "Não foi possível atualizar agora. Mostrando a última consulta com sucesso.";
     return;
@@ -1172,13 +1138,12 @@ async function loadGames(silent = false) {
     " · Horários locais do dispositivo.";
 }
 
-/* ---------- Lista salva no aparelho (para abrir sem internet) ---------- */
 const SNAPSHOT_KEY = "futplay:ultima-lista";
 
 function saveSnapshot(list) {
   try {
     localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({time: Date.now(), matches: list.slice(0, 120)}));
-  } catch (error) { /* armazenamento cheio ou bloqueado: ignora */ }
+  } catch (error) {}
 }
 
 function readSnapshot() {
@@ -1190,7 +1155,6 @@ function readSnapshot() {
   }
 }
 
-/* ---------- Botões de dia ---------- */
 const quickEl = document.getElementById("quick");
 
 quickEl.addEventListener("click", event => {
@@ -1201,9 +1165,6 @@ quickEl.addEventListener("click", event => {
   render();
 });
 
-/* ---------- Avisos de gol ---------- */
-// Funcionam enquanto o site (ou o app instalado) estiver aberto, mesmo em segundo plano.
-// Com o app totalmente fechado o navegador não deixa o site consultar placares.
 const ALERT_KEY = "futplay:avisos-de-gol";
 let goalAlerts = false;
 const alertBtn = document.getElementById("alertBtn");
@@ -1214,7 +1175,7 @@ function updateAlertBtn() {
 }
 
 function saveAlertPref(on) {
-  try { localStorage.setItem(ALERT_KEY, on ? "1" : "0"); } catch (error) { /* ignora */ }
+  try { localStorage.setItem(ALERT_KEY, on ? "1" : "0"); } catch (error) {}
 }
 
 async function showNotice(title, body, tag) {
@@ -1224,8 +1185,8 @@ async function showNotice(title, body, tag) {
       await reg.showNotification(title, {body, tag, renotify:true, icon:"icon-192.png", badge:"icon-192.png", vibrate:[200, 100, 200]});
       return;
     }
-  } catch (error) { /* tenta o jeito simples abaixo */ }
-  try { new Notification(title, {body, tag, icon:"icon-192.png"}); } catch (error) { /* sem notificação */ }
+  } catch (error) {}
+  try { new Notification(title, {body, tag, icon:"icon-192.png"}); } catch (error) {}
 }
 
 async function toggleAlerts() {
@@ -1274,13 +1235,12 @@ try {
 } catch (error) { goalAlerts = false; }
 updateAlertBtn();
 
-/* ---------- App instalável (PWA) ---------- */
 const installBtn = document.getElementById("installBtn");
 let installPrompt = null;
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => { /* sem sw.js no servidor: o site funciona igual */ });
+    navigator.serviceWorker.register("sw.js").catch(() => {});
   });
 }
 window.addEventListener("beforeinstallprompt", event => {
@@ -1291,13 +1251,12 @@ window.addEventListener("beforeinstallprompt", event => {
 installBtn.addEventListener("click", async () => {
   if (!installPrompt) return;
   installPrompt.prompt();
-  try { await installPrompt.userChoice; } catch (error) { /* ignora */ }
+  try { await installPrompt.userChoice; } catch (error) {}
   installPrompt = null;
   installBtn.hidden = true;
 });
 window.addEventListener("appinstalled", () => { installBtn.hidden = true; });
 
-/* ---------- Pesquisa de time: todos os jogos dele em todas as competições ---------- */
 const teamInput = document.getElementById("teamSearch");
 const teamChipsEl = document.getElementById("teamChips");
 
@@ -1306,12 +1265,12 @@ function teamNames(competitor) {
   return [t.displayName, t.shortDisplayName, t.name, t.location, t.abbreviation].map(norm).filter(Boolean);
 }
 
-// Apelidos comuns: o que a pessoa digita -> nome usado pelas fontes
 const TEAM_ALIASES = {
   barca:"barcelona", barcelona:"barca", bayern:"bayernmunich", psg:"parissaintgermain",
-  inter:"internazionale", milan:"acmilan", juve:"juventus", atletico:"atleticomadrid",
-  manutd:"manchesterunited", mancity:"manchestercity", spurs:"tottenham", galo:"atleticomineiro",
-  mengao:"flamengo", timao:"corinthians", verdao:"palmeiras", tricolor:"saopaulo"
+  parissaintgermain:"psg", inter:"internazionale", milan:"acmilan", juve:"juventus",
+  atletico:"atleticomadrid", manutd:"manchesterunited", mancity:"manchestercity",
+  spurs:"tottenham", galo:"atleticomineiro", mengao:"flamengo", timao:"corinthians",
+  verdao:"palmeiras", tricolor:"saopaulo", villarreal:"villarrealcf"
 };
 
 function matchesTeam(event) {
@@ -1320,16 +1279,6 @@ function matchesTeam(event) {
   return [home, away].some(c => teamNames(c).some(n => terms.some(t => n.includes(t))));
 }
 
-// Mesmo jogo vindo da ESPN e da football-data.org (evita repetir na pesquisa de time)
-function sameGame(a, b) {
-  if (a.leagueId !== b.leagueId) return false;
-  if (Math.abs(new Date(a.date) - new Date(b.date)) > 3 * 3600000) return false;
-  const x = competitorsOf(a), y = competitorsOf(b);
-  return teamNames(x.home).some(n => teamNames(y.home).some(m => similar(n, m))) &&
-         teamNames(x.away).some(n => teamNames(y.away).some(m => similar(n, m)));
-}
-
-// Se o texto bate com mais de um time (ex.: "Real"), mostra botões para escolher o certo
 function renderTeamChips() {
   let html = "";
   if (teamQuery) {
@@ -1357,7 +1306,7 @@ function renderTeamChips() {
 function applyTeamSearch(raw) {
   const text = String(raw || "").trim();
   const q = norm(text);
-  if (q.length < 3) {                      // texto curto ou vazio: volta à lista normal
+  if (q.length < 3) {
     if (!teamQuery) return;
     teamQuery = "";
     teamLabel = "";
@@ -1372,7 +1321,7 @@ function applyTeamSearch(raw) {
   teamQuery = q;
   teamLabel = text;
   selected = "all";
-  visibleCount = Infinity;                 // mostra todos os jogos do time
+  visibleCount = Infinity;
   renderFilters();
   loadGames();
 }
@@ -1398,14 +1347,14 @@ teamChipsEl.addEventListener("click", event => {
 filtersEl.addEventListener("click", event => {
   const button = event.target.closest("button[data-league]");
   if (!button) return;
-  if (teamQuery) {                         // escolher uma liga encerra a pesquisa de time
+  if (teamQuery) {
     teamQuery = "";
     teamLabel = "";
     teamInput.value = "";
     renderTeamChips();
   }
   selected = button.dataset.league;
-  visibleCount = selected === "all" ? PAGE_SIZE : Infinity;   // liga escolhida: mostra TODOS os jogos
+  visibleCount = selected === "all" ? PAGE_SIZE : Infinity;
   filtersEl.querySelectorAll(".filter").forEach(b =>
     b.classList.toggle("active", b === button)
   );
@@ -1420,17 +1369,14 @@ games.addEventListener("click", event => {
 
 document.getElementById("refresh").addEventListener("click", () => loadGames());
 
-/* ---------- Tempo real: jogos ao vivo a cada 1 segundo ---------- */
-// Consulta só as competições que têm jogo ao vivo, uma de cada vez (sem sobreposição),
-// e atualiza apenas o placar/tempo dos cartões que mudaram.
 async function pollLive() {
-  if (polling || (document.hidden && !goalAlerts)) return true;   // com avisos ligados, continua em segundo plano
+  if (polling || (document.hidden && !goalAlerts)) return true;
   const now = Date.now();
   const isActive = e => {
     const t = e.status?.type;
     if (t?.state === "in") return true;
     if (t?.state !== "pre") return false;
-    const start = new Date(e.date).getTime();      // começa em 1 min ou começou há menos de 3 h
+    const start = new Date(e.date).getTime();
     return start <= now + 60000 && start >= now - 3 * 3600000;
   };
   const liveLeagues = [...new Set(matches.filter(isActive).map(e => e.leagueId))];
@@ -1442,19 +1388,18 @@ async function pollLive() {
   let needsFullReload = false;
   try {
     const results = await Promise.allSettled(liveLeagues.map(id => fetchEspn(id, 1, 0)));
-    if (token !== requestNumber) return true;   // o filtro mudou durante a consulta
+    if (token !== requestNumber) return true;
     results.forEach(result => {
       if (result.status !== "fulfilled") { ok = false; return; }
       result.value.forEach(fresh => {
         let index = matches.findIndex(m => cardKey(m) === cardKey(fresh));
-        if (index >= 0) {                            // jogo vindo da própria ESPN
-          if (rank(matches[index]) !== rank(fresh)) needsFullReload = true; // começou/terminou
+        if (index >= 0) {
+          if (rank(matches[index]) !== rank(fresh)) needsFullReload = true;
           matches[index] = fresh;
           syncWideCache(fresh);
           updateCard(fresh);
           return;
         }
-        // jogo da football-data.org: usa o placar mais rápido da ESPN
         if (fresh.status?.type?.state === "pre") return;
         index = matches.findIndex(m => m.source === "fd" && sameGame(m, fresh));
         if (index < 0) return;
@@ -1478,10 +1423,9 @@ async function pollLive() {
 
 async function liveLoop() {
   const ok = await pollLive();
-  setTimeout(liveLoop, ok ? (document.hidden ? 15000 : LIVE_POLL_MS) : 5000);   // em segundo plano: a cada 15 s
+  setTimeout(liveLoop, ok ? (document.hidden ? 15000 : LIVE_POLL_MS) : 5000);
 }
 
-// Jogos da football-data.org: uma única consulta a cada 10 s (limite do plano grátis)
 async function pollLiveFD() {
   if (!FD_ENABLED || document.hidden) return true;
   if (!matches.some(e => e.source === "fd" && e.status?.type?.state === "in")) return true;
@@ -1510,19 +1454,18 @@ async function fdLoop() {
   setTimeout(fdLoop, ok ? FD_POLL_MS : 30000);
 }
 
-/* ---------- Onde assistir: tenta abrir o app Futenium direto (Android) ---------- */
 const IS_ANDROID = /Android/i.test(navigator.userAgent || "");
 
 games.addEventListener("click", event => {
   const link = event.target.closest("a.watch");
-  if (!link || !IS_ANDROID) return;      // fora do Android: link normal (página da loja)
+  if (!link || !IS_ANDROID) return;
   event.preventDefault();
   window.location.href = "intent://#Intent;action=android.intent.action.MAIN;" +
     "category=android.intent.category.LAUNCHER;" +
     `package=${FUTENIUM_PACKAGE};S.browser_fallback_url=${encodeURIComponent(link.href)};end`;
 });
 
-/* ---------- Detalhes do jogo: resumo, escalações e estatísticas (ESPN) ---------- */
+/* ---------- Detalhes do jogo ---------- */
 const STAT_NAMES = {
   possessionPct:"Posse de bola", totalShots:"Finalizações", shotsOnTarget:"Finalizações no gol",
   blockedShots:"Finalizações bloqueadas", wonCorners:"Escanteios", foulsCommitted:"Faltas",
@@ -1556,7 +1499,7 @@ const detailEl = document.getElementById("detail");
 const detailHead = document.getElementById("detailHead");
 const detailTabs = document.getElementById("detailTabs");
 const detailBody = document.getElementById("detailBody");
-const detailIds = {};      // id do jogo da football-data -> id do jogo na ESPN
+const detailIds = {};
 let detail = {key:null, event:null, tab:"resumo", data:null, state:"idle"};
 let detailTimer = null;
 let detailTick = 0;
@@ -1618,7 +1561,6 @@ function eventLabel(text) {
   return TYPE_PT[t.trim()] || translateText(text) || "";
 }
 
-// Traduz o texto dos lances (a ESPN envia em inglês). Nomes de times e jogadores ficam como estão.
 const DELAY_REASONS = {
   "a drinks break":"para pausa de hidratação", "drinks break":"para pausa de hidratação",
   "a cooling break":"para pausa de hidratação", "an injury":"por lesão",
@@ -1665,7 +1607,7 @@ const PT_RULES = [
     `${p} (${t}) recebe cartão vermelho por ${CARD_REASONS[why.toLowerCase()] || "infração"}.`],
   [/VAR Decision:/g, "Decisão do VAR:"],
   [/Goal (?:cancelled|disallowed)/gi, "Gol anulado"],
-  [/Goal confirmed/gi, "Gol confirmado"],
+  [/Goal confirmed/gi, "Gol confirmed"],
   [/is saved in the (top|bottom) (left|right) corner/g, (m, v, h) =>
     `é defendido no canto ${v === "top" ? "superior" : "inferior"} ${h === "left" ? "esquerdo" : "direito"}`],
   [/is saved in the centre of the goal/g, "é defendido no meio do gol"],
@@ -1798,14 +1740,14 @@ async function loadDetail(silent = false) {
   const event = detail.event;
   if (!key || !event) return;
   if (!silent) {
-    detail.state = "loading";
+    detail.state = "carregando";
     renderDetail();
   }
   try {
     const id = await resolveEspnId(event);
     if (key !== detail.key) return;
     if (!id) {
-      detail.state = "none";
+      detail.state = "nenhum";
       detail.data = null;
       renderDetail();
       return;
@@ -1816,7 +1758,7 @@ async function loadDetail(silent = false) {
     detail.state = "ok";
   } catch (error) {
     if (key !== detail.key) return;
-    if (!detail.data) detail.state = "error";   // numa atualização automática mantém o que já está na tela
+    if (!detail.data) detail.state = "erro";
   }
   renderDetail();
 }
@@ -1866,7 +1808,7 @@ function summaryHTML(data) {
       text: translateText(c.text || "")
     }));
   }
-  items = items.filter(i => i.text || i.type).reverse();   // mais recentes primeiro
+  items = items.filter(i => i.text || i.type).reverse();
 
   if (!items.length) {
     return html + `<div class="sheet-note">Os lances ainda não estão disponíveis para este jogo.</div>`;
@@ -1886,7 +1828,6 @@ const ROLE_OF = {
 };
 const roleOf = p => ROLE_OF[String(p.position?.abbreviation || "").toUpperCase().split("-")[0]] || "";
 
-// negativo = lado esquerdo, positivo = lado direito, 0 = centro (do ponto de vista do próprio time)
 function sideOf(p) {
   const a = String(p.position?.abbreviation || "").toUpperCase();
   if (/^(LB|LWB|LW|LM|LF)$/.test(a)) return -2;
@@ -1905,7 +1846,6 @@ function shortName(name) {
   return prefixes.includes(before.toLowerCase()) ? before + " " + last : last;
 }
 
-// Distribui os 11 titulares em linhas (goleiro + linhas da formação)
 function pitchRows(r, starters) {
   let order = starters.slice();
   const places = order.map(p => Number(p.formationPlace));
@@ -1930,7 +1870,6 @@ function pitchRows(r, starters) {
     counts[2] = field.length - counts[0] - counts[1];
     counts = counts.filter(n => n > 0);
     if (validFormation === false && (d && m && f > 0)) {
-      // com a formação desconhecida, ordena por defesa -> meio -> ataque
       const rank = {G:0, D:1, M:2, F:3, "":2};
       field.sort((a, b) => rank[roleOf(a)] - rank[roleOf(b)]);
     }
@@ -1941,13 +1880,12 @@ function pitchRows(r, starters) {
   counts.forEach(n => {
     const row = field.slice(cursor, cursor + n);
     cursor += n;
-    row.sort((a, b) => sideOf(a) - sideOf(b));   // esquerda -> direita
+    row.sort((a, b) => sideOf(a) - sideOf(b));
     rows.push(row);
   });
   return {gk, rows, formation: validFormation ? formation : ""};
 }
 
-// Lê os lances do jogo e conta, por jogador: gols, cartões e substituições
 function playerEvents(data) {
   const roster = [];
   (data.rosters || []).forEach(r => (r.roster || []).forEach(p => {
@@ -1959,7 +1897,6 @@ function playerEvents(data) {
     if (!map.has(key)) map.set(key, {g:0, y:0, r:0, out:"", in:"", replacedBy:""});
     return map.get(key);
   };
-  // o jogador que aparece primeiro no texto é o autor do lance (o assistente vem depois)
   const firstPlayer = text => {
     const flat = ` ${plainText(text)} `;
     let best = null, bestIndex = Infinity;
@@ -2016,7 +1953,6 @@ function pitchPlayers(r, isHome, startIndex, evMap) {
 
   const nameOf = p => p.athlete?.displayName || p.athlete?.fullName || "Jogador";
   const byKey = new Map(r.roster.map(q => [plainText(nameOf(q)), q]));
-  // quem está em campo agora naquela posição (segue a cadeia de substituições)
   const currentOf = starter => {
     let cur = starter;
     for (let i = 0; i < 6; i++) {
@@ -2029,7 +1965,6 @@ function pitchPlayers(r, isHome, startIndex, evMap) {
 
   const place = (starter, x, y) => {
     const p = currentOf(starter);
-    // time de cima ataca para baixo: o lado "esquerdo" dele fica à direita da tela
     const left = isHome ? 100 - x : x;
     const top = isHome ? y : 100 - y;
     const num = p.jersey || p.athlete?.jersey || "";
@@ -2101,8 +2036,6 @@ function lineupsHTML(data) {
   return legend + field + key + (subs ? `<div class="lineups" style="margin-top:18px">${subs}</div>` : "");
 }
 
-// Total de substituições já feitas por cada time (a ESPN não manda isso nas estatísticas,
-// então contamos nos lances do jogo)
 function countSubs(data, homeTeam, awayTeam) {
   const hId = String(homeTeam?.id ?? "");
   const aId = String(awayTeam?.id ?? "");
@@ -2126,7 +2059,7 @@ function countSubs(data, homeTeam, awayTeam) {
     add(k.team?.id, k.team?.displayName || nameFromText(k.text));
   });
 
-  if (!h && !a) {      // sem lances-chave: tenta a narração
+  if (!h && !a) {
     (data.commentary || []).forEach(c => {
       const team = nameFromText(c.text);
       if (team) add(null, team);
@@ -2148,7 +2081,6 @@ function statsHTML(data) {
   const awayStats = Object.fromEntries((away.statistics || []).map(s => [s.name, s]));
   const rows = (home.statistics || []).filter(s => s.displayValue != null && awayStats[s.name]?.displayValue != null);
 
-  // linha extra: substituições feitas (só quando o jogo já começou)
   const gameState = data.header?.competitions?.[0]?.status?.type?.state;
   if (gameState !== "pre") {
     const subs = countSubs(data, home.team, away.team);
@@ -2181,118 +2113,15 @@ function statsHTML(data) {
   }).join("");
 }
 
-// Últimos jogos de cada time (competições do site, últimos 90 dias)
-const espnRecentCache = {};
-
-async function fetchEspnRecent(id) {
-  const cached = espnRecentCache[id];
-  if (cached && Date.now() - cached.time < 300000) return cached.data;
-  const data = await fetchEspn(id, 90, 0);
-  espnRecentCache[id] = {time: Date.now(), data};
-  return data;
-}
-
-function lastGamesOf(finished, ref, beforeDate, limit = 5) {
-  const refName = norm(ref.name);
-  const isTeam = c => {
-    if (ref.id && c.team?.id) return String(c.team.id) === String(ref.id);
-    const n = norm(c.team?.displayName || c.team?.name);
-    return n && refName && (n === refName || n.includes(refName) || refName.includes(n));
-  };
-  const before = new Date(beforeDate).getTime();
-  const seen = new Set();
-  return finished
-    .filter(e => {
-      const t = new Date(e.date).getTime();
-      if (!(t < before)) return false;
-      const {home, away} = competitorsOf(e);
-      return isTeam(home) || isTeam(away);
-    })
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .filter(e => { const k = cardKey(e); if (seen.has(k)) return false; seen.add(k); return true; })
-    .slice(0, limit)
-    .map(e => {
-      const {home, away} = competitorsOf(e);
-      const mine = isTeam(home) ? home : away;
-      const other = mine === home ? away : home;
-      const gf = Number(mine.score), ga = Number(other.score);
-      return {
-        date: e.date,
-        comp: e.leagueName || leagues[e.leagueId] || "",
-        opp: other.team?.displayName || other.team?.name || "Adversário",
-        home: mine === home,
-        gf, ga,
-        res: gf > ga ? "v" : gf < ga ? "d" : "e"
-      };
-    });
-}
-
-async function loadForm() {
-  const key = detail.key;
-  const event = detail.event;
-  if (!key || !event) return;
-  detail.form = {state:"loading"};
-  renderDetail();
-
-  const results = await Promise.allSettled(Object.keys(leagues).map(fetchEspnRecent));
-  if (key !== detail.key) return;
-  const all = [];
-  results.forEach(r => { if (r.status === "fulfilled") all.push(...r.value); });
-  if (!all.length) { detail.form = {state:"error"}; renderDetail(); return; }
-
-  const finished = all.filter(e => e.status?.type?.completed || e.status?.type?.state === "post");
-  const comps = detail.data?.header?.competitions?.[0]?.competitors || [];
-  const ref = side => {
-    const fromData = comps.find(c => c.homeAway === side);
-    const own = competitorsOf(event)[side];
-    const team = fromData?.team || own.team || {};
-    return {id: team.id || own.team?.id, name: team.displayName || team.name || own.team?.displayName || own.team?.name};
-  };
-  const homeRef = ref("home"), awayRef = ref("away");
-  detail.form = {
-    state: "ok",
-    home: {name: homeRef.name, games: lastGamesOf(finished, homeRef, event.date)},
-    away: {name: awayRef.name, games: lastGamesOf(finished, awayRef, event.date)}
-  };
-  renderDetail();
-}
-
-function formHTML(form) {
-  const fmt = new Intl.DateTimeFormat("pt-BR", {day:"2-digit", month:"2-digit"});
-  const letter = {v:"V", e:"E", d:"D"};
-  const column = team => {
-    const games = team.games;
-    const summary = games.map(g => `<span class="res ${g.res}">${letter[g.res]}</span>`).join("");
-    const rows = games.map(g => `<div class="fm">
-        <span class="res ${g.res}">${letter[g.res]}</span>
-        <span class="fm-t"><b>${esc(g.home ? "vs " : "@ ")}${esc(g.opp)}</b>
-          <small>${esc(g.comp)} · ${esc(fmt.format(new Date(g.date)))}</small></span>
-        <span class="fm-s">${g.home ? `${g.gf} x ${g.ga}` : `${g.ga} x ${g.gf}`}</span>
-      </div>`).join("");
-    return `<div class="lu"><h3>${esc(team.name || "Time")}</h3>
-      ${games.length
-        ? `<div class="form-sum">${summary}</div>${rows}`
-        : `<div class="sub">Nenhum jogo encerrado nos últimos 90 dias nas competições do site.</div>`}
-    </div>`;
-  };
-  return `<div class="lineups">${column(form.home)}${column(form.away)}</div>
-    <div class="info-line" style="margin-top:14px">V vitória · E empate · D derrota. "vs" = em casa, "@" = fora. Considera as competições do site, nos últimos 90 dias.</div>`;
-}
-
 function renderDetail() {
   renderDetailHead();
   detailTabs.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === detail.tab));
   let html;
-  if (detail.tab === "forma") {
-    const form = detail.form;
-    if (!form || form.state === "loading") html = `<div class="sheet-note">Carregando os últimos jogos...</div>`;
-    else if (form.state === "error") html = `<div class="sheet-note"><span class="error">Não foi possível carregar os últimos jogos.</span><br>Verifique a conexão e tente novamente.</div>`;
-    else html = formHTML(form);
-  } else if (detail.state === "loading") {
+  if (detail.state === "carregando") {
     html = `<div class="sheet-note">Carregando detalhes...</div>`;
-  } else if (detail.state === "none") {
+  } else if (detail.state === "nenhum") {
     html = `<div class="sheet-note">Os detalhes deste jogo ainda não estão disponíveis.<br>Tente novamente mais perto do início da partida.</div>`;
-  } else if (detail.state === "error" || !detail.data) {
+  } else if (detail.state === "erro" || !detail.data) {
     html = `<div class="sheet-note"><span class="error">Não foi possível carregar os detalhes.</span><br>Verifique a conexão e tente novamente.</div>`;
   } else {
     html = detail.tab === "escalacoes" ? lineupsHTML(detail.data)
@@ -2308,7 +2137,7 @@ function renderDetail() {
 function openDetail(key) {
   const event = matches.find(m => cardKey(m) === key);
   if (!event) return;
-  detail = {key, event, tab:"resumo", data:null, state:"loading"};
+  detail = {key, event, tab:"resumo", data:null, state:"carregando"};
   detailHead.dataset.html = "";
   detailBody.dataset.html = "";
   detailBody.scrollTop = 0;
@@ -2322,7 +2151,7 @@ function openDetail(key) {
   clearInterval(detailTimer);
   detailTick = 0;
   detailTimer = setInterval(() => {
-    renderDetailHead();                       // placar e tempo acompanham a lista
+    renderDetailHead();
     detailTick++;
     const ev = detailEvent();
     const live = ev?.status?.type?.state === "in";
@@ -2334,7 +2163,7 @@ function closeDetail() {
   closePlayer();
   clearInterval(detailTimer);
   detailTimer = null;
-  detail = {key:null, event:null, tab:"resumo", data:null, state:"idle"};
+  detail = {key:null, event:null, tab:"resumo", data:null, state:"inativo"};
   detailEl.classList.remove("open");
   document.body.style.overflow = "";
   if (detailOpener && document.contains(detailOpener)) detailOpener.focus();
@@ -2354,7 +2183,6 @@ detailTabs.addEventListener("click", event => {
   detail.tab = tab.dataset.tab;
   detailBody.scrollTop = 0;
   renderDetail();
-  if (detail.tab === "forma" && (!detail.form || detail.form.state === "error")) loadForm();
 });
 
 detailEl.addEventListener("click", event => {
@@ -2367,11 +2195,11 @@ document.addEventListener("keydown", event => {
   else if (detailEl.classList.contains("open")) closeDetail();
 });
 
-/* ---------- Dados do jogador (toque no jogador do campo ou da lista de reservas) ---------- */
+/* ---------- Dados do jogador ---------- */
 const playerEl = document.getElementById("player");
 const playerHead = document.getElementById("playerHead");
 const playerBody = document.getElementById("playerBody");
-let playerView = {key:null, p:null, r:null, info:null, state:"idle"};
+let playerView = {key:null, p:null, r:null, info:null, state:"inativo"};
 let playerOpener = null;
 const athleteCache = {};
 
@@ -2410,7 +2238,6 @@ function fmtDate(dob) {
   return new Intl.DateTimeFormat("pt-BR", {day:"2-digit", month:"2-digit", year:"numeric", timeZone:"UTC"}).format(d);
 }
 
-// Dados pessoais vêm da ESPN (se ela tiver o cadastro do jogador)
 async function fetchAthlete(id) {
   if (athleteCache[id]) return athleteCache[id];
   const urls = [
@@ -2428,7 +2255,6 @@ async function fetchAthlete(id) {
   throw last || new Error("sem dados");
 }
 
-// A ESPN manda altura em pés/polegadas (6' 8") e peso em libras (205 lbs): converte para cm e kg
 function heightCm(a) {
   const d = String(a.displayHeight || "");
   let m = d.match(/(\d+)\s*'\s*(\d+)?/);
@@ -2501,10 +2327,9 @@ function renderPlayer() {
   add("Camisa", num);
 
   let note = "";
-  if (v.state === "loading") note = `<div class="info-line">Buscando idade e dados pessoais...</div>`;
-  else if (v.state === "error") note = `<div class="info-line">Idade e outros dados pessoais não estão disponíveis agora.</div>`;
+  if (v.state === "carregando") note = `<div class="info-line">Buscando idade e dados pessoais...</div>`;
+  else if (v.state === "erro") note = `<div class="info-line">Idade e outros dados pessoais não estão disponíveis agora.</div>`;
 
-  // lances do jogo (gols, cartões, substituição) e estatísticas do jogador na partida
   const ev = playerEvents(detail.data || {}).get(plainText(shown));
   const chips = [];
   if (ev?.g) chips.push(`⚽ ${ev.g} gol${ev.g > 1 ? "s" : ""}`);
@@ -2531,7 +2356,7 @@ async function openPlayer(aid, nm) {
   if (!found) return;
   const key = `${aid}|${nm}`;
   const cached = aid ? athleteCache[aid] : null;
-  playerView = {key, p: found.p, r: found.r, info: cached ? athleteInfo(cached) : null, state: cached ? "ok" : (aid ? "loading" : "error")};
+  playerView = {key, p: found.p, r: found.r, info: cached ? athleteInfo(cached) : null, state: cached ? "ok" : (aid ? "carregando" : "erro")};
   playerHead.dataset.html = "";
   playerBody.dataset.html = "";
   playerBody.scrollTop = 0;
@@ -2549,7 +2374,7 @@ async function openPlayer(aid, nm) {
     playerView.state = "ok";
   } catch (error) {
     if (playerView.key !== key) return;
-    playerView.state = "error";
+    playerView.state = "erro";
   }
   renderPlayer();
 }
@@ -2557,7 +2382,7 @@ async function openPlayer(aid, nm) {
 function closePlayer() {
   if (!playerEl.classList.contains("open")) return;
   playerEl.classList.remove("open");
-  playerView = {key:null, p:null, r:null, info:null, state:"idle"};
+  playerView = {key:null, p:null, r:null, info:null, state:"inativo"};
   if (!detailEl.classList.contains("open")) document.body.style.overflow = "";
   if (playerOpener && document.contains(playerOpener)) playerOpener.focus();
   playerOpener = null;
