@@ -491,6 +491,21 @@ function statusText(event) {
   return {label:localTime(event.date), cls:"soon", live:false};
 }
 
+// Texto do status vindo da ESPN (em inglês) para português
+function statusDetailPt(detail) {
+  const t = String(detail || "").trim();
+  if (!t) return "Em andamento";
+  if (/^[\d+:'’\s]+$/.test(t)) return t;               // só minutos, ex.: 45'+2'
+  const map = [
+    [/half ?time|\bhalf\b/i, "Intervalo"], [/full time|\bft\b|final|end of match|match ended/i, "Fim de jogo"],
+    [/delay/i, "Paralisado"], [/suspend/i, "Suspenso"], [/postpone/i, "Adiado"],
+    [/cancel/i, "Cancelado"], [/abandon/i, "Abandonado"], [/shootout|penalt/i, "Pênaltis"],
+    [/extra ?time|\bet\b/i, "Prorrogação"], [/progress|live|play/i, "Em andamento"]
+  ];
+  for (const [regex, label] of map) if (regex.test(t)) return label;
+  return /[a-z]{4,}/i.test(t) && /\b(the|and|of|in|to|is|time|half|match)\b/i.test(t) ? "Em andamento" : t;
+}
+
 function liveParts(event) {
   const st = event.status || {};
   const type = st.type || {};
@@ -504,7 +519,7 @@ function liveParts(event) {
     (period === 3 || period === 4) ? "Prorrogação" :
     period === 5 ? "Pênaltis" : "";
   const clock = st.displayClock || "";
-  if (!name && !clock) return pill(type.detail || "Em andamento");
+  if (!name && !clock) return pill(statusDetailPt(type.detail));
   return (name ? `<span class="t-date">${esc(name)}</span>` : "") + (clock ? pill(clock) : "");
 }
 
@@ -873,7 +888,7 @@ function fdReason(error) {
   if (error.status === 429) return "limite de consultas atingido, erro 429";
   if (error.status) return `erro ${error.status}`;
   if (error.name === "AbortError") return "demorou demais para responder";
-  return FD_PROXY ? "Worker sem resposta ou sem conexão" : "bloqueada pelo navegador (CORS) ou sem conexão";
+  return FD_PROXY ? "servidor intermediário sem resposta ou sem conexão" : "bloqueada pelo navegador (CORS) ou sem conexão";
 }
 
 function showSource({useFD, fd, espnCount}) {
@@ -1067,15 +1082,15 @@ async function loadGames(silent = false) {
   const ids = (selected === "all" || teamMode) ? Object.keys(leagues) : [selected];
   const useFD = FD_ENABLED && ids.some(id => FD_CODES[id]);
 
-  // Modificado: Sempre utiliza football-data (quando aplicável) e ESPN juntas para todas as ligas (inclusive Champions League)
-  const past = PAST_DAYS;
-  const future = FUTURE_DAYS;
+  const wide = selected !== "all" && !teamMode;
+  const past = wide ? 300 : PAST_DAYS;
+  const future = wide ? 300 : FUTURE_DAYS;
   const fdPromise = useFD
-    ? fetchFootballData(past, future).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
+    ? (wide ? fetchFootballDataSeason(FD_CODES[selected]) : fetchFootballData()).then(list => ({ok:true, list}), error => ({ok:false, list:[], error}))
     : Promise.resolve({ok:false, list:[]});
-  
-  const espnIds = teamMode ? ids : ids;
-  const espnPromise = Promise.allSettled(espnIds.map(id => fetchEspn(id, past, future)));
+  const espnIds = teamMode ? ids : ids.filter(id => !(useFD && FD_CODES[id]));
+  const espnPromise = Promise.allSettled(espnIds.map(id =>
+    teamMode ? fetchEspnWide(id, 120000) : fetchEspn(id, past, future)));
   const [fd, espnResults] = await Promise.all([fdPromise, espnPromise]);
   if (myRequest !== requestNumber) return;
 
@@ -1474,7 +1489,13 @@ const STAT_NAMES = {
   totalTackles:"Desarmes", effectiveTackles:"Desarmes certos", interceptions:"Interceptações",
   totalClearance:"Cortes", effectiveClearance:"Cortes certos", totalCrosses:"Cruzamentos",
   accurateCrosses:"Cruzamentos certos", totalLongBalls:"Bolas longas", accurateLongBalls:"Bolas longas certas",
-  substitutions:"Substituições"
+  substitutions:"Substituições", shotPct:"Precisão de finalizações", penaltyKickGoals:"Gols de pênalti",
+  penaltyKickShots:"Pênaltis cobrados", foulsSuffered:"Faltas sofridas", goalAssists:"Assistências",
+  ownGoals:"Gols contra", shotAssists:"Passes para finalização", totalGoals:"Gols", goalsConceded:"Gols sofridos",
+  shotsFaced:"Chutes sofridos", tacklePct:"Aproveitamento de desarmes", crossPct:"Aproveitamento de cruzamentos",
+  longballPct:"Aproveitamento de bolas longas", shotsOffTarget:"Finalizações para fora",
+  totalOffsides:"Impedimentos", totalFouls:"Faltas", cornerKicks:"Escanteios", goalKicks:"Tiros de meta",
+  throwIns:"Laterais", totalThrowIns:"Laterais"
 };
 
 const LABEL_PT = {
@@ -1489,10 +1510,12 @@ const LABEL_PT = {
   "accurate crosses":"Cruzamentos certos", "long balls":"Bolas longas", "accurate long balls":"Bolas longas certas",
   "shot assists":"Passes para finalização", "goals":"Gols", "assists":"Assistências", "own goals":"Gols contra",
   "shot %":"Precisão de finalizações", "penalty kick goals":"Gols de pênalti", "penalty kick shots":"Pênaltis cobrados",
-  "substitutions":"Substituições"
+  "substitutions":"Substituições", "shots off target":"Finalizações para fora", "goal kicks":"Tiros de meta",
+  "throw ins":"Laterais", "throw-ins":"Laterais", "possession %":"Posse de bola", "crossing %":"Aproveitamento de cruzamentos",
+  "long ball %":"Aproveitamento de bolas longas", "saves %":"Defesas", "goals conceded":"Gols sofridos", "shots faced":"Chutes sofridos"
 };
 function statLabel(s) {
-  return STAT_NAMES[s.name] || LABEL_PT[String(s.label || "").toLowerCase()] || s.label || s.name;
+  return STAT_NAMES[s.name] || LABEL_PT[String(s.label || "").toLowerCase()] || "";
 }
 
 const detailEl = document.getElementById("detail");
@@ -1549,6 +1572,7 @@ function eventLabel(text) {
   if (t.includes("yellow")) return "Cartão amarelo";
   if (t.includes("red")) return "Cartão vermelho";
   if (t.includes("substitution")) return "Substituição";
+  if (t.includes("end match") || t.includes("match ends") || t.includes("match end")) return "Fim de jogo";
   if (t.includes("kickoff") || /start (1st|first) half/.test(t)) return "Início do jogo";
   if (/start (2nd|second) half/.test(t)) return "Início do 2º tempo";
   if (t.includes("halftime") || t.includes("half time")) return "Intervalo";
@@ -1558,7 +1582,10 @@ function eventLabel(text) {
   if (t.includes("extra time") || t.includes("overtime")) return "Prorrogação";
   if (t.includes("shootout")) return "Disputa de pênaltis";
   if (t.includes("var")) return "VAR";
-  return TYPE_PT[t.trim()] || translateText(text) || "";
+  const mapped = TYPE_PT[t.trim()];
+  if (mapped) return mapped;
+  const translated = translateText(text);
+  return translated !== String(text || "") && ptOnly(text) ? translated : "Lance";
 }
 
 const DELAY_REASONS = {
@@ -1584,6 +1611,15 @@ const PASS_KINDS = {
   "long ball":"um lançamento", "lofted pass":"um passe por cobertura"
 };
 const PT_RULES = [
+  [/(is )?saved in the (top|bottom) (left|right) corner/g, (m, is, v, h) =>
+    `${is ? "é defendido" : "defendido"} no canto ${v === "top" ? "superior" : "inferior"} ${h === "left" ? "esquerdo" : "direito"}`],
+  [/(is )?saved in the centre of the goal/g, (m, is) => (is ? "é defendido" : "defendido") + " no meio do gol"],
+  [/First Half Extra Time begins/gi, "Começa o primeiro tempo da prorrogação"],
+  [/First Half Extra Time ends,?/gi, "Fim do primeiro tempo da prorrogação,"],
+  [/Second Half Extra Time begins/gi, "Começa o segundo tempo da prorrogação"],
+  [/Second Half Extra Time ends,?/gi, "Fim do segundo tempo da prorrogação,"],
+  [/Extra Time ends,?/gi, "Fim da prorrogação,"],
+  [/Penalty Shootout begins/gi, "Início da disputa de pênaltis,"],
   [/Delay over\. (.+?) (?:are|is) ready to continue\./g, (m, who) => who === "They"
     ? "Jogo reiniciado. Os times estão prontos para continuar."
     : `Jogo reiniciado. ${who} está pronto para continuar.`],
@@ -1607,7 +1643,7 @@ const PT_RULES = [
     `${p} (${t}) recebe cartão vermelho por ${CARD_REASONS[why.toLowerCase()] || "infração"}.`],
   [/VAR Decision:/g, "Decisão do VAR:"],
   [/Goal (?:cancelled|disallowed)/gi, "Gol anulado"],
-  [/Goal confirmed/gi, "Gol confirmed"],
+  [/Goal confirmed/gi, "Gol confirmado"],
   [/is saved in the (top|bottom) (left|right) corner/g, (m, v, h) =>
     `é defendido no canto ${v === "top" ? "superior" : "inferior"} ${h === "left" ? "esquerdo" : "direito"}`],
   [/is saved in the centre of the goal/g, "é defendido no meio do gol"],
@@ -1689,13 +1725,29 @@ const PT_RULES = [
   [/following a set piece situation/g, "após bola parada"],
   [/following a fast break/g, "em contra-ataque"],
   [/Conceded by/g, "Cedido por"],
-  [/\bsaved\b/g, "defendido"]
+  [/\bsaved\b/g, "defendido"],
+  [/fails to capitali[sz]e on this great opportunity,?/gi, "desperdiça a grande chance,"],
+  [/hits the crossbar/g, "bate no travessão"],
+  [/Dangerous play by (.+?) \((.+?)\)/g, "Jogada perigosa de $1 ($2)"],
+  [/(.+?) \((.+?)\) is sent off/g, "$1 ($2) é expulso"],
+  [/Goal Disallowed/gi, "Gol anulado"],
+  [/Still (.+?), (.+?)\./g, "Placar até aqui: $1, $2."]
 ];
 
 function translateText(text) {
   let out = String(text || "");
   PT_RULES.forEach(([regex, replacement]) => { out = out.replace(regex, replacement); });
   return out;
+}
+
+// Palavras que só existem em inglês: se uma frase ainda tiver alguma depois da tradução, ela não é exibida
+const EN_WORDS = /(?<![\p{L}\p{M}])(the|and|with|from|of|is|are|was|were|to|by|on|in|an|his|her|their|they|it|this|that|has|have|had|been|after|before|because|but|who|which|when|into|attempt|assisted|replaces|caught|shown|conceded|wins|tries|misses|saves|saved|scores|begins|ends|booked|fails|converts|hits|foul|shot|goal|penalty|corner|kick|card)(?![\p{L}\p{M}])/iu;
+
+function ptOnly(text) {
+  const sentences = translateText(text).split(/(?<=[.!?])\s+/);
+  return sentences
+    .filter(x => !EN_WORDS.test(x.replace(/The Strongest|The New Saints/g, "")))
+    .join(" ").trim();
 }
 
 const POSITIONS = {
@@ -1799,13 +1851,13 @@ function summaryHTML(data) {
   let items = (data.keyEvents || []).map(k => ({
     time: k.clock?.displayValue || "",
     type: k.type?.text || "",
-    text: translateText(k.text || k.shortText || "")
+    text: ptOnly(k.text || k.shortText || "")
   }));
   if (!items.length) {
     items = (data.commentary || []).slice(-40).map(c => ({
       time: c.time?.displayValue || "",
       type: "",
-      text: translateText(c.text || "")
+      text: ptOnly(c.text || "")
     }));
   }
   items = items.filter(i => i.text || i.type).reverse();
@@ -2079,7 +2131,7 @@ function statsHTML(data) {
   let away = teams.find(t => t !== home) || teams[1];
 
   const awayStats = Object.fromEntries((away.statistics || []).map(s => [s.name, s]));
-  const rows = (home.statistics || []).filter(s => s.displayValue != null && awayStats[s.name]?.displayValue != null);
+  const rows = (home.statistics || []).filter(s => s.displayValue != null && awayStats[s.name]?.displayValue != null && statLabel(s));
 
   const gameState = data.header?.competitions?.[0]?.status?.type?.state;
   if (gameState !== "pre") {
@@ -2277,6 +2329,35 @@ function weightKg(a) {
   return w > 0 ? (w <= 120 ? Math.round(w) : Math.round(w * 0.45359237)) : null;
 }
 
+const COUNTRY_PT = {
+  "brazil":"Brasil","argentina":"Argentina","uruguay":"Uruguai","paraguay":"Paraguai","chile":"Chile","colombia":"Colômbia",
+  "peru":"Peru","ecuador":"Equador","venezuela":"Venezuela","bolivia":"Bolívia","mexico":"México","united states":"Estados Unidos",
+  "usa":"Estados Unidos","canada":"Canadá","england":"Inglaterra","scotland":"Escócia","wales":"País de Gales",
+  "northern ireland":"Irlanda do Norte","ireland":"Irlanda","republic of ireland":"Irlanda","france":"França","germany":"Alemanha",
+  "spain":"Espanha","portugal":"Portugal","italy":"Itália","netherlands":"Países Baixos","belgium":"Bélgica","switzerland":"Suíça",
+  "austria":"Áustria","denmark":"Dinamarca","sweden":"Suécia","norway":"Noruega","finland":"Finlândia","poland":"Polônia",
+  "czech republic":"República Tcheca","czechia":"República Tcheca","slovakia":"Eslováquia","slovenia":"Eslovênia","croatia":"Croácia",
+  "serbia":"Sérvia","bosnia and herzegovina":"Bósnia e Herzegovina","montenegro":"Montenegro","north macedonia":"Macedônia do Norte",
+  "albania":"Albânia","greece":"Grécia","turkey":"Turquia","türkiye":"Turquia","russia":"Rússia","ukraine":"Ucrânia","romania":"Romênia",
+  "bulgaria":"Bulgária","hungary":"Hungria","iceland":"Islândia","israel":"Israel","morocco":"Marrocos","algeria":"Argélia",
+  "tunisia":"Tunísia","egypt":"Egito","senegal":"Senegal","nigeria":"Nigéria","ghana":"Gana","cameroon":"Camarões",
+  "ivory coast":"Costa do Marfim","côte d'ivoire":"Costa do Marfim","mali":"Mali","guinea":"Guiné","dr congo":"RD Congo",
+  "congo dr":"RD Congo","democratic republic of the congo":"RD Congo","congo":"Congo","south africa":"África do Sul","angola":"Angola",
+  "mozambique":"Moçambique","cape verde":"Cabo Verde","cabo verde":"Cabo Verde","gabon":"Gabão","zambia":"Zâmbia","kenya":"Quênia",
+  "japan":"Japão","south korea":"Coreia do Sul","korea republic":"Coreia do Sul","china":"China","australia":"Austrália",
+  "new zealand":"Nova Zelândia","iran":"Irã","iraq":"Iraque","saudi arabia":"Arábia Saudita","qatar":"Catar","costa rica":"Costa Rica",
+  "panama":"Panamá","honduras":"Honduras","jamaica":"Jamaica","haiti":"Haiti","cuba":"Cuba","dominican republic":"República Dominicana",
+  "curacao":"Curaçao","curaçao":"Curaçao","suriname":"Suriname","guyana":"Guiana","el salvador":"El Salvador","guatemala":"Guatemala",
+  "trinidad and tobago":"Trinidad e Tobago","lithuania":"Lituânia","latvia":"Letônia","estonia":"Estônia","georgia":"Geórgia",
+  "armenia":"Armênia","azerbaijan":"Azerbaijão","kosovo":"Kosovo","luxembourg":"Luxemburgo","cyprus":"Chipre","malta":"Malta",
+  "belarus":"Bielorrússia","moldova":"Moldávia","uzbekistan":"Uzbequistão","kazakhstan":"Cazaquistão","india":"Índia",
+  "indonesia":"Indonésia","thailand":"Tailândia","philippines":"Filipinas","vietnam":"Vietnã","jordan":"Jordânia","syria":"Síria",
+  "lebanon":"Líbano","uae":"Emirados Árabes Unidos","united arab emirates":"Emirados Árabes Unidos","guinea-bissau":"Guiné-Bissau",
+  "equatorial guinea":"Guiné Equatorial","burkina faso":"Burkina Faso","benin":"Benin","togo":"Togo","gambia":"Gâmbia","sierra leone":"Serra Leoa",
+  "liberia":"Libéria","zimbabwe":"Zimbábue","uganda":"Uganda","tanzania":"Tanzânia","ethiopia":"Etiópia","libya":"Líbia"
+};
+const countryPt = name => COUNTRY_PT[String(name || "").trim().toLowerCase()] || name || "";
+
 function athleteInfo(a) {
   const cm = heightCm(a), kg = weightKg(a);
   const height = cm ? `${cm} cm` : "";
@@ -2286,9 +2367,9 @@ function athleteInfo(a) {
     fullName: a.fullName || a.displayName || "",
     dob: a.dateOfBirth || "",
     age: a.age != null ? Number(a.age) : (a.dateOfBirth ? ageFrom(a.dateOfBirth) : null),
-    nationality: a.citizenship || a.flag?.alt || bp.country || "",
+    nationality: countryPt(a.citizenship || a.flag?.alt || bp.country || ""),
     height, weight,
-    birthPlace: [bp.city, bp.country].filter(Boolean).join(", "),
+    birthPlace: [bp.city, countryPt(bp.country)].filter(Boolean).join(", "),
     headshot: a.headshot?.href || ""
   };
 }
