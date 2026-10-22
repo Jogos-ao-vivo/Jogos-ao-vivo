@@ -5,6 +5,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#080b10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FutPlay">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>FutPlay | Futebol ao vivo</title>
 <style>
 :root {
@@ -54,6 +60,35 @@ h1{font-size:clamp(29px,5vw,48px);line-height:1.12;margin:13px 0}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chips:not(:empty){margin-top:12px}
 .league{min-width:0;line-height:1.35}
+
+[hidden]{display:none!important}
+.quick{display:flex;gap:9px;overflow:auto;padding:0 0 6px}
+.filter.alert-on{background:#42e69a1f;border-color:var(--green);color:var(--green);font-weight:800}
+.day{
+  grid-column:1/-1;margin:10px 2px 0;font-size:13px;font-weight:800;color:var(--muted);
+  letter-spacing:.5px;text-transform:uppercase;
+}
+.day:first-child{margin-top:0}
+.dwrap{position:relative;display:inline-block}
+.bds{
+  position:absolute;right:-9px;top:-8px;display:flex;font-size:11px;line-height:1;
+  filter:drop-shadow(0 1px 2px #000);white-space:nowrap;
+}
+.pl .pb{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}
+.pl .pb + .pos{margin-left:8px}
+.res{
+  width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:900;flex:none;
+}
+.res.v{background:var(--green);color:#06140d}
+.res.e{background:var(--yellow);color:#241b00}
+.res.d{background:#ff5d6c;color:#2b0409}
+.form-sum{display:flex;gap:5px;margin:8px 0 6px}
+.fm{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.fm-t{min-width:0;flex:1;line-height:1.35}
+.fm-t b{display:block;overflow-wrap:anywhere}
+.fm-t small{color:var(--muted);font-size:11px}
+.fm-s{font-weight:800;white-space:nowrap}
 .filters{display:flex;gap:9px;overflow:auto;padding:20px 0}
 .filter{
   white-space:nowrap;background:var(--panel);color:var(--text);
@@ -262,6 +297,16 @@ button.btn.details{border:1px solid var(--line)}
 
   <div class="filters" id="filters"></div>
 
+  <div class="quick" id="quick">
+    <button class="filter active" type="button" data-day="all">Todos os dias</button>
+    <button class="filter" type="button" data-day="live">🔴 Ao vivo</button>
+    <button class="filter" type="button" data-day="yesterday">Ontem</button>
+    <button class="filter" type="button" data-day="today">Hoje</button>
+    <button class="filter" type="button" data-day="tomorrow">Amanhã</button>
+    <button class="filter" type="button" id="alertBtn">🔔 Avisos de gol: desligados</button>
+    <button class="filter" type="button" id="installBtn" hidden>📲 Instalar app</button>
+  </div>
+
   <div class="section-head">
     <h2 id="sectionTitle">Jogos e horários</h2>
     <button class="filter" id="refresh">↻ Atualizar</button>
@@ -284,6 +329,7 @@ button.btn.details{border:1px solid var(--line)}
       <button class="filter tab active" type="button" data-tab="resumo">Resumo</button>
       <button class="filter tab" type="button" data-tab="escalacoes">Escalações</button>
       <button class="filter tab" type="button" data-tab="estatisticas">Estatísticas</button>
+      <button class="filter tab" type="button" data-tab="forma">Últimos jogos</button>
     </div>
     <div class="sheet-body" id="detailBody"></div>
   </div>
@@ -358,6 +404,7 @@ const FD_CODES = {
 const FD_LEAGUE_BY_CODE = Object.fromEntries(Object.entries(FD_CODES).map(([id, code]) => [code, id]));
 
 let selected = "all";
+let dayFilter = "all";   // all | live | yesterday | today | tomorrow
 let teamQuery = "";    // pesquisa de time (texto normalizado)
 let teamLabel = "";    // o que a pessoa digitou
 let matches = [];
@@ -602,6 +649,7 @@ function updateCard(event) {
   const previous = el.dataset.score;
   el.dataset.score = scoreKey;
   if (state.live && previous && goals(scoreKey) > goals(previous)) {
+    announceGoal(event, previous, scoreKey);
     const scoreEl = el.querySelector(".score");
     if (scoreEl) {
       scoreEl.classList.add("goal");
@@ -859,22 +907,66 @@ function sortMatches(list) {
 }
 
 /* ---------- Tela ---------- */
+/* ---------- Filtro por dia e agrupamento ---------- */
+const dayKey = date => {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+};
+
+function dayLabel(date) {
+  const key = dayKey(date);
+  if (key === dayKey(dayOffset(0))) return "Hoje";
+  if (key === dayKey(dayOffset(1))) return "Amanhã";
+  if (key === dayKey(dayOffset(-1))) return "Ontem";
+  const text = new Intl.DateTimeFormat("pt-BR", {weekday:"long", day:"2-digit", month:"2-digit"}).format(new Date(date));
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function shownMatches() {
+  if (dayFilter === "all") return matches;
+  if (dayFilter === "live") return matches.filter(e => e.status?.type?.state === "in");
+  const offset = dayFilter === "yesterday" ? -1 : dayFilter === "tomorrow" ? 1 : 0;
+  const key = dayKey(dayOffset(offset));
+  return matches.filter(e => dayKey(e.date) === key);
+}
+
+function groupLabel(event) {
+  const state = event.status?.type?.state;
+  if (state === "in") return "Ao vivo agora";
+  const label = dayLabel(event.date);
+  return (event.status?.type?.completed || state === "post") ? `Encerrados · ${label}` : label;
+}
+
 function render() {
   let html;
-  if (!matches.length) {
-    html = `<div class="empty">
-      ${lastFailures && lastFailures === lastTotal
-        ? '<span class="error">Não foi possível carregar os dados esportivos.</span><br>Verifique a conexão ou tente novamente mais tarde.'
-        : teamQuery
-          ? `Nenhum jogo encontrado para “${esc(teamLabel)}”.<br>Confira o nome do time ou tente outra grafia.`
-          : 'Nenhuma partida foi encontrada nesta consulta.'}
-    </div>`;
+  const list = shownMatches();
+  if (!list.length) {
+    let message;
+    if (lastFailures && lastFailures === lastTotal && !matches.length) {
+      message = '<span class="error">Não foi possível carregar os dados esportivos.</span><br>Verifique a conexão ou tente novamente mais tarde.';
+    } else if (matches.length && dayFilter === "live") {
+      message = "Nenhum jogo ao vivo neste momento.";
+    } else if (matches.length) {
+      message = "Nenhum jogo neste dia.";
+    } else if (teamQuery) {
+      message = `Nenhum jogo encontrado para “${esc(teamLabel)}”.<br>Confira o nome do time ou tente outra grafia.`;
+    } else {
+      message = "Nenhuma partida foi encontrada nesta consulta.";
+    }
+    html = `<div class="empty">${message}</div>`;
   } else {
-    html = matches.slice(0, visibleCount).map(event =>
-      card(event, event.leagueName || leagues[event.leagueId] || event.leagueId)
-    ).join("");
-    if (matches.length > visibleCount) {
-      html += `<button class="more" id="more">Ver mais jogos (${matches.length - visibleCount})</button>`;
+    const showHeaders = dayFilter === "all";
+    let last = "";
+    html = list.slice(0, visibleCount).map(event => {
+      let head = "";
+      if (showHeaders) {
+        const label = groupLabel(event);
+        if (label !== last) { head = `<h3 class="day">${esc(label)}</h3>`; last = label; }
+      }
+      return head + card(event, event.leagueName || leagues[event.leagueId] || event.leagueId);
+    }).join("");
+    if (list.length > visibleCount) {
+      html += `<button class="more" id="more">Ver mais jogos (${list.length - visibleCount})</button>`;
     }
     if (lastFailures) {
       html += `<div class="empty">Algumas fontes não responderam à consulta. Os jogos disponíveis estão exibidos acima.</div>`;
@@ -937,6 +1029,22 @@ async function loadGames(silent = false) {
   let all = Array.from(unique.values()).map(e => e.source === "fd" ? applyOverlay(e) : e);
   if (teamMode) all = all.filter(matchesTeam);
 
+  // Sem internet na primeira consulta: mostra a última lista salva neste aparelho
+  if (!all.length && total > 0 && failures === total && !matches.length && !teamMode && selected === "all") {
+    const snap = readSnapshot();
+    if (snap) {
+      matches = snap.matches;
+      lastFailures = 0;
+      lastTotal = total;
+      sourceInfo.className = "source warn";
+      sourceInfo.textContent = "Sem conexão · mostrando a última lista salva";
+      render();
+      updated.textContent = "Sem conexão. Lista salva às " +
+        new Date(snap.time).toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"}) + ".";
+      return;
+    }
+  }
+
   // Falha total numa atualização automática: mantém o que já estava na tela
   if (!all.length && total > 0 && failures === total && matches.length && silent) {
     updated.textContent = "Não foi possível atualizar agora. Mostrando a última consulta com sucesso.";
@@ -944,6 +1052,7 @@ async function loadGames(silent = false) {
   }
 
   matches = sortMatches(all);
+  if (!teamMode && selected === "all" && all.length) saveSnapshot(matches);
   showSource({useFD, fd, espnCount: all.filter(e => e.source === "espn").length});
   lastFailures = failures;
   lastTotal = total;
@@ -954,6 +1063,131 @@ async function loadGames(silent = false) {
     new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}) +
     " · Horários locais do dispositivo.";
 }
+
+/* ---------- Lista salva no aparelho (para abrir sem internet) ---------- */
+const SNAPSHOT_KEY = "futplay:ultima-lista";
+
+function saveSnapshot(list) {
+  try {
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({time: Date.now(), matches: list.slice(0, 120)}));
+  } catch (error) { /* armazenamento cheio ou bloqueado: ignora */ }
+}
+
+function readSnapshot() {
+  try {
+    const snap = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || "null");
+    return snap && Array.isArray(snap.matches) && snap.matches.length ? snap : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+/* ---------- Botões de dia ---------- */
+const quickEl = document.getElementById("quick");
+
+quickEl.addEventListener("click", event => {
+  const button = event.target.closest("button[data-day]");
+  if (!button) return;
+  dayFilter = button.dataset.day;
+  quickEl.querySelectorAll("button[data-day]").forEach(b => b.classList.toggle("active", b === button));
+  render();
+});
+
+/* ---------- Avisos de gol ---------- */
+// Funcionam enquanto o site (ou o app instalado) estiver aberto, mesmo em segundo plano.
+// Com o app totalmente fechado o navegador não deixa o site consultar placares.
+const ALERT_KEY = "futplay:avisos-de-gol";
+let goalAlerts = false;
+const alertBtn = document.getElementById("alertBtn");
+
+function updateAlertBtn() {
+  alertBtn.classList.toggle("alert-on", goalAlerts);
+  alertBtn.textContent = goalAlerts ? "🔔 Avisos de gol: ligados" : "🔔 Avisos de gol: desligados";
+}
+
+function saveAlertPref(on) {
+  try { localStorage.setItem(ALERT_KEY, on ? "1" : "0"); } catch (error) { /* ignora */ }
+}
+
+async function showNotice(title, body, tag) {
+  try {
+    const reg = navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg && reg.showNotification) {
+      await reg.showNotification(title, {body, tag, renotify:true, icon:"icon-192.png", badge:"icon-192.png", vibrate:[200, 100, 200]});
+      return;
+    }
+  } catch (error) { /* tenta o jeito simples abaixo */ }
+  try { new Notification(title, {body, tag, icon:"icon-192.png"}); } catch (error) { /* sem notificação */ }
+}
+
+async function toggleAlerts() {
+  if (goalAlerts) {
+    goalAlerts = false;
+    saveAlertPref(false);
+    updateAlertBtn();
+    return;
+  }
+  if (!("Notification" in window)) {
+    updated.textContent = "Este navegador não permite notificações.";
+    return;
+  }
+  let permission = Notification.permission;
+  if (permission === "default") permission = await Notification.requestPermission();
+  if (permission !== "granted") {
+    updated.textContent = "Para receber os avisos, permita as notificações deste site nas configurações do navegador.";
+    return;
+  }
+  goalAlerts = true;
+  saveAlertPref(true);
+  updateAlertBtn();
+  showNotice("🔔 Avisos de gol ligados", "Você será avisado dos gols dos jogos ao vivo que estão na lista.", "futplay-teste");
+}
+
+function announceGoal(event, before, after) {
+  if (!goalAlerts || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  const [bh, ba] = String(before).split("-").map(Number);
+  const [ah, aa] = String(after).split("-").map(Number);
+  const {home, away} = competitorsOf(event);
+  const homeName = home.team?.displayName || home.team?.name || "Time da casa";
+  const awayName = away.team?.displayName || away.team?.name || "Time visitante";
+  const who = ah > bh ? homeName : aa > ba ? awayName : "";
+  const clock = event.status?.displayClock ? ` · ${event.status.displayClock}` : "";
+  showNotice(
+    who ? `⚽ GOL do ${who}!` : "⚽ GOL!",
+    `${homeName} ${ah} x ${aa} ${awayName}${clock}`,
+    `gol-${cardKey(event)}-${after}`
+  );
+}
+
+alertBtn.addEventListener("click", toggleAlerts);
+try {
+  goalAlerts = localStorage.getItem(ALERT_KEY) === "1" &&
+    typeof Notification !== "undefined" && Notification.permission === "granted";
+} catch (error) { goalAlerts = false; }
+updateAlertBtn();
+
+/* ---------- App instalável (PWA) ---------- */
+const installBtn = document.getElementById("installBtn");
+let installPrompt = null;
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => { /* sem sw.js no servidor: o site funciona igual */ });
+  });
+}
+window.addEventListener("beforeinstallprompt", event => {
+  event.preventDefault();
+  installPrompt = event;
+  installBtn.hidden = false;
+});
+installBtn.addEventListener("click", async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  try { await installPrompt.userChoice; } catch (error) { /* ignora */ }
+  installPrompt = null;
+  installBtn.hidden = true;
+});
+window.addEventListener("appinstalled", () => { installBtn.hidden = true; });
 
 /* ---------- Pesquisa de time: todos os jogos dele em todas as competições ---------- */
 const teamInput = document.getElementById("teamSearch");
@@ -1063,7 +1297,7 @@ document.getElementById("refresh").addEventListener("click", () => loadGames());
 // Consulta só as competições que têm jogo ao vivo, uma de cada vez (sem sobreposição),
 // e atualiza apenas o placar/tempo dos cartões que mudaram.
 async function pollLive() {
-  if (polling || document.hidden) return true;
+  if (polling || (document.hidden && !goalAlerts)) return true;   // com avisos ligados, continua em segundo plano
   const now = Date.now();
   const isActive = e => {
     const t = e.status?.type;
@@ -1117,7 +1351,7 @@ async function pollLive() {
 
 async function liveLoop() {
   const ok = await pollLive();
-  setTimeout(liveLoop, ok ? LIVE_POLL_MS : 5000);   // se falhar, espera um pouco mais
+  setTimeout(liveLoop, ok ? (document.hidden ? 15000 : LIVE_POLL_MS) : 5000);   // em segundo plano: a cada 15 s
 }
 
 // Jogos da football-data.org: uma única consulta a cada 10 s (limite do plano grátis)
@@ -1586,7 +1820,64 @@ function pitchRows(r, starters) {
   return {gk, rows, formation: validFormation ? formation : ""};
 }
 
-function pitchPlayers(r, isHome, startIndex) {
+// Lê os lances do jogo e conta, por jogador: gols, cartões e substituições
+function playerEvents(data) {
+  const roster = [];
+  (data.rosters || []).forEach(r => (r.roster || []).forEach(p => {
+    const name = p.athlete?.displayName || p.athlete?.fullName;
+    if (name) roster.push({name, key: plainText(name)});
+  }));
+  const map = new Map();
+  const get = key => {
+    if (!map.has(key)) map.set(key, {g:0, y:0, r:0, out:"", in:""});
+    return map.get(key);
+  };
+  // o jogador que aparece primeiro no texto é o autor do lance (o assistente vem depois)
+  const firstPlayer = text => {
+    const flat = ` ${plainText(text)} `;
+    let best = null, bestIndex = Infinity;
+    roster.forEach(p => {
+      const at = flat.indexOf(` ${p.key} `);
+      if (at >= 0 && at < bestIndex) { best = p; bestIndex = at; }
+    });
+    return best;
+  };
+
+  (data.keyEvents || []).forEach(k => {
+    const type = String(k.type?.text || "").toLowerCase();
+    const text = String(k.text || "");
+    const minute = k.clock?.displayValue || "";
+    if (type.includes("substitution")) {
+      const m = text.match(/Substitution, .+?\. (.+?) replaces (.+?)(?: because of an injury)?\./);
+      if (!m) return;
+      const inKey = plainText(m[1]);
+      const outKey = plainText(m[2]);
+      if (roster.some(p => p.key === inKey)) get(inKey).in = minute;
+      if (roster.some(p => p.key === outKey)) get(outKey).out = minute;
+      return;
+    }
+    if (type.includes("own goal")) return;
+    const who = firstPlayer(text);
+    if (!who) return;
+    if (type.includes("goal") || type.includes("scored")) get(who.key).g++;
+    else if (type.includes("yellow")) get(who.key).y++;
+    else if (type.includes("red")) get(who.key).r++;
+  });
+  return map;
+}
+
+function playerBadges(ev, long = false) {
+  if (!ev) return "";
+  let out = "";
+  if (ev.g) out += "⚽" + (ev.g > 1 ? ev.g : "");
+  if (ev.y) out += "🟨";
+  if (ev.r) out += "🟥";
+  if (ev.in) out += long ? `🔼${ev.in}` : "";
+  if (ev.out) out += long ? `🔻${ev.out}` : "🔻";
+  return out;
+}
+
+function pitchPlayers(r, isHome, startIndex, evMap) {
   let starters = r.roster.filter(p => p.starter);
   if (!starters.length) starters = r.roster.slice(0, 11);
   const {gk, rows, formation} = pitchRows(r, starters);
@@ -1600,7 +1891,7 @@ function pitchPlayers(r, isHome, startIndex) {
     const num = p.jersey || p.athlete?.jersey || "";
     const full = p.athlete?.displayName || p.athlete?.fullName || "Jogador";
     out.push(`<div class="pp ${isHome ? "h" : "a"}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%;animation-delay:${(index * 0.07).toFixed(2)}s" title="${esc(full)}">
-      <span class="dot">${esc(num)}</span><span class="nm">${esc(shortName(full))}</span></div>`);
+      <span class="dwrap"><span class="dot">${esc(num)}</span><span class="bds">${playerBadges(evMap?.get(plainText(full)))}</span></span><span class="nm">${esc(shortName(full))}</span></div>`);
     index++;
   };
 
@@ -1618,18 +1909,25 @@ function lineupsHTML(data) {
   if (!rosters.length) {
     return `<div class="sheet-note">As escalações ainda não foram divulgadas.</div>`;
   }
-  const player = p => `<div class="pl">
+  const evMapAll = playerEvents(data);
+  const player = p => {
+    const full = p.athlete?.displayName || p.athlete?.fullName || "Jogador";
+    const badges = playerBadges(evMapAll.get(plainText(full)), true);
+    return `<div class="pl">
       <span class="n">${esc(p.jersey || p.athlete?.jersey || "")}</span>
-      <span class="nm">${esc(p.athlete?.displayName || p.athlete?.fullName || "Jogador")}</span>
+      <span class="nm">${esc(full)}</span>
+      ${badges ? `<span class="pb">${badges}</span>` : ""}
       <span class="pos">${esc(positionLabel(p.position?.abbreviation))}</span>
     </div>`;
+  };
 
   const home = rosters.find(r => r.homeAway === "home") || rosters[0];
   const away = rosters.find(r => r !== home && r.homeAway === "away") || rosters.find(r => r !== home);
 
   const teamName = r => r?.team?.displayName || r?.team?.name || "Time";
-  const h = pitchPlayers(home, true, 0);
-  const a = away ? pitchPlayers(away, false, h.count) : {html:"", formation:""};
+  const evMap = playerEvents(data);
+  const h = pitchPlayers(home, true, 0, evMap);
+  const a = away ? pitchPlayers(away, false, h.count, evMap) : {html:"", formation:""};
 
   const legend = `<div class="legend">
       <span class="lg h"><i></i>${esc(teamName(home))}${h.formation ? " · " + esc(h.formation) : ""}</span>
@@ -1653,7 +1951,8 @@ function lineupsHTML(data) {
   };
   const subs = [home, away].filter(Boolean).map(subsOf).join("");
 
-  return legend + field + (subs ? `<div class="lineups" style="margin-top:18px">${subs}</div>` : "");
+  const key = `<div class="info-line" style="margin-top:10px">⚽ gol · 🟨 amarelo · 🟥 vermelho · 🔻 saiu · 🔼 entrou (minuto)</div>`;
+  return legend + field + key + (subs ? `<div class="lineups" style="margin-top:18px">${subs}</div>` : "");
 }
 
 // Total de substituições já feitas por cada time (a ESPN não manda isso nas estatísticas,
@@ -1736,11 +2035,114 @@ function statsHTML(data) {
   }).join("");
 }
 
+// Últimos jogos de cada time (competições do site, últimos 90 dias)
+const espnRecentCache = {};
+
+async function fetchEspnRecent(id) {
+  const cached = espnRecentCache[id];
+  if (cached && Date.now() - cached.time < 300000) return cached.data;
+  const data = await fetchEspn(id, 90, 0);
+  espnRecentCache[id] = {time: Date.now(), data};
+  return data;
+}
+
+function lastGamesOf(finished, ref, beforeDate, limit = 5) {
+  const refName = norm(ref.name);
+  const isTeam = c => {
+    if (ref.id && c.team?.id) return String(c.team.id) === String(ref.id);
+    const n = norm(c.team?.displayName || c.team?.name);
+    return n && refName && (n === refName || n.includes(refName) || refName.includes(n));
+  };
+  const before = new Date(beforeDate).getTime();
+  const seen = new Set();
+  return finished
+    .filter(e => {
+      const t = new Date(e.date).getTime();
+      if (!(t < before)) return false;
+      const {home, away} = competitorsOf(e);
+      return isTeam(home) || isTeam(away);
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .filter(e => { const k = cardKey(e); if (seen.has(k)) return false; seen.add(k); return true; })
+    .slice(0, limit)
+    .map(e => {
+      const {home, away} = competitorsOf(e);
+      const mine = isTeam(home) ? home : away;
+      const other = mine === home ? away : home;
+      const gf = Number(mine.score), ga = Number(other.score);
+      return {
+        date: e.date,
+        comp: e.leagueName || leagues[e.leagueId] || "",
+        opp: other.team?.displayName || other.team?.name || "Adversário",
+        home: mine === home,
+        gf, ga,
+        res: gf > ga ? "v" : gf < ga ? "d" : "e"
+      };
+    });
+}
+
+async function loadForm() {
+  const key = detail.key;
+  const event = detail.event;
+  if (!key || !event) return;
+  detail.form = {state:"loading"};
+  renderDetail();
+
+  const results = await Promise.allSettled(Object.keys(leagues).map(fetchEspnRecent));
+  if (key !== detail.key) return;
+  const all = [];
+  results.forEach(r => { if (r.status === "fulfilled") all.push(...r.value); });
+  if (!all.length) { detail.form = {state:"error"}; renderDetail(); return; }
+
+  const finished = all.filter(e => e.status?.type?.completed || e.status?.type?.state === "post");
+  const comps = detail.data?.header?.competitions?.[0]?.competitors || [];
+  const ref = side => {
+    const fromData = comps.find(c => c.homeAway === side);
+    const own = competitorsOf(event)[side];
+    const team = fromData?.team || own.team || {};
+    return {id: team.id || own.team?.id, name: team.displayName || team.name || own.team?.displayName || own.team?.name};
+  };
+  const homeRef = ref("home"), awayRef = ref("away");
+  detail.form = {
+    state: "ok",
+    home: {name: homeRef.name, games: lastGamesOf(finished, homeRef, event.date)},
+    away: {name: awayRef.name, games: lastGamesOf(finished, awayRef, event.date)}
+  };
+  renderDetail();
+}
+
+function formHTML(form) {
+  const fmt = new Intl.DateTimeFormat("pt-BR", {day:"2-digit", month:"2-digit"});
+  const letter = {v:"V", e:"E", d:"D"};
+  const column = team => {
+    const games = team.games;
+    const summary = games.map(g => `<span class="res ${g.res}">${letter[g.res]}</span>`).join("");
+    const rows = games.map(g => `<div class="fm">
+        <span class="res ${g.res}">${letter[g.res]}</span>
+        <span class="fm-t"><b>${esc(g.home ? "vs " : "@ ")}${esc(g.opp)}</b>
+          <small>${esc(g.comp)} · ${esc(fmt.format(new Date(g.date)))}</small></span>
+        <span class="fm-s">${g.home ? `${g.gf} x ${g.ga}` : `${g.ga} x ${g.gf}`}</span>
+      </div>`).join("");
+    return `<div class="lu"><h3>${esc(team.name || "Time")}</h3>
+      ${games.length
+        ? `<div class="form-sum">${summary}</div>${rows}`
+        : `<div class="sub">Nenhum jogo encerrado nos últimos 90 dias nas competições do site.</div>`}
+    </div>`;
+  };
+  return `<div class="lineups">${column(form.home)}${column(form.away)}</div>
+    <div class="info-line" style="margin-top:14px">V vitória · E empate · D derrota. "vs" = em casa, "@" = fora. Considera as competições do site, nos últimos 90 dias.</div>`;
+}
+
 function renderDetail() {
   renderDetailHead();
   detailTabs.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === detail.tab));
   let html;
-  if (detail.state === "loading") {
+  if (detail.tab === "forma") {
+    const form = detail.form;
+    if (!form || form.state === "loading") html = `<div class="sheet-note">Carregando os últimos jogos...</div>`;
+    else if (form.state === "error") html = `<div class="sheet-note"><span class="error">Não foi possível carregar os últimos jogos.</span><br>Verifique a conexão e tente novamente.</div>`;
+    else html = formHTML(form);
+  } else if (detail.state === "loading") {
     html = `<div class="sheet-note">Carregando detalhes...</div>`;
   } else if (detail.state === "none") {
     html = `<div class="sheet-note">Os detalhes deste jogo ainda não estão disponíveis.<br>Tente novamente mais perto do início da partida.</div>`;
@@ -1805,6 +2207,7 @@ detailTabs.addEventListener("click", event => {
   detail.tab = tab.dataset.tab;
   detailBody.scrollTop = 0;
   renderDetail();
+  if (detail.tab === "forma" && (!detail.form || detail.form.state === "error")) loadForm();
 });
 
 detailEl.addEventListener("click", event => {
